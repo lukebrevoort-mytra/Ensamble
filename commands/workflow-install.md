@@ -22,6 +22,12 @@ human-edited files (never clobber a customized `repo-profile.md`).
    - `commands/spec.md`          ← from `<KIT>/commands/spec.md`
    - `commands/execute.md`       ← from `<KIT>/commands/execute.md`
    - `commands/review.md`        ← from `<KIT>/commands/review.md`
+   - `workflows/spec.js`         ← from `<KIT>/workflows/spec.js`
+   - `workflows/execute.js`      ← from `<KIT>/workflows/execute.js`
+   - `workflows/review.js`       ← from `<KIT>/workflows/review.js`
+     These three are the **native workflow scripts** the commands launch via the
+     Workflow tool; they go in `.claude/workflows/` so they resolve as named
+     workflows (`Workflow({name: "spec"|"execute"|"review"})`). Copy all three.
    These are identical across repos; copy verbatim.
 
 **3 — Gitignore the scratch space.** Ensure `.workflows/` is in the repo's
@@ -45,8 +51,14 @@ modules — don't just point at them. Then derive, with citations:
      never regress and the *exact existing test/command* that proves each (e.g. an
      egress negative test, a read-only AST scan, a migration-reversibility check).
    - **Specialist roster** — the 3–6 named subagents this repo's work
-     characteristically needs (not the generic table) — each with when-to-spawn,
-     scope, and the checks it owns.
+     characteristically needs (not the generic table) — each with its `agentType`
+     (the real native agent the script will spawn: `Explore`/`oracle`/`verifier`/
+     `uiux`/`general-purpose` or a custom type), when-to-spawn, scope, and the
+     checks it owns. The workflow scripts read these fields verbatim, so be exact.
+   - **Repo tools for evidence** — the specific MCP servers / local services /
+     harnesses reviewers and executors should use (and their tool ids), so the
+     scripts can name them in every agent brief (CONTRACT §4.4) instead of letting
+     orchestrated agents guess.
    - **Characteristic execution & verification mode** — how a change is actually
      proven done here (eval/grounding deltas? sim scenarios? browser flows? soak?).
    A simulation-heavy k8s repo and a data-intensive UI repo must come out of this
@@ -67,16 +79,27 @@ values as the default option:
      repo-aware;
    - subsystem boundaries / ownership and any do-not-touch areas;
    - the **definition of done / merge bar** and default branch;
-   - security-sensitive surfaces to always review hard.
+   - security-sensitive surfaces to always review hard;
+   - **which tools/services agents SHOULD and SHOULD NOT use** — if recon found an
+     MCP/service but it's unclear whether agents may drive it (cost, creds, side
+     effects, production data), ask explicitly rather than guessing;
+   - **Mandatory requirements** (the heart of tuning this repo) — ask what must
+     ALWAYS hold for a change here and how it's proven: a test that must pass, a
+     cycle that must run (eval/sim/soak), a tool that must be used, an artifact that
+     must be produced (e.g. a screenshot for any UI change). Record each as
+     `{requirement, appliesWhen, requiredEvidence}`; these become the workflows'
+     hard gates (CONTRACT §4.8). Surface your best guesses from 4b and let the user
+     confirm, edit, or add — this is the step that "changes the workflow to fit the
+     repo."
 
 **6 — Write the profile.** Populate `<repo>/.claude/workflow-kit/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected
 + confirmed values. The **Repo character**, **Invariants & gate tests**,
-**Specialist roster**, and **Execution mode** sections (from step 4b) are
-mandatory — a profile without them is just a command list and defeats the purpose.
+**Mandatory requirements**, **Specialist roster**, and **Execution mode** sections
+are mandatory — a profile without them is just a command list and defeats the purpose.
 Mark anything still unverified with `~`. This file is committed and human-maintained.
 
-**7 — Report.** Emit a short CONTRACT §5-style summary: what was installed, the
+**7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an
 open question. Tell the user they can now run `/spec`, `/execute`, `/review` in
 this repo, and that re-running `/workflow-install` updates the portable layer

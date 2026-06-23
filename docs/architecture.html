@@ -42,6 +42,7 @@
   .layer.l1::before{background:var(--accent);}
   .layer.l2::before{background:var(--forest);}
   .layer.l3::before{background:var(--info);}
+  .layer.l4::before{background:var(--warn);}
   .layer .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;
     text-transform:uppercase;color:var(--muted);}
   .layer h3{font-family:var(--serif);font-size:1.3rem;font-weight:540;margin:.3rem 0 .5rem;}
@@ -52,6 +53,7 @@
   .chip.static{border-color:var(--accent-soft);background:var(--accent-tint);color:#8f3a1f;}
   .chip.dyn{border-color:#cdd9e0;background:#eef3f6;color:var(--info);}
   .chip.repo{border-color:#cfe0cf;background:#eef4ee;color:#3c5e3e;}
+  .chip.warn{border-color:#e6d5a8;background:#faf4e1;color:#7a5c15;}
 
   .flow{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
   .wf{background:var(--surface);border:1px solid var(--border);border-radius:16px;
@@ -116,75 +118,79 @@
 
 <div class="wrap">
   <header class="hero">
-    <p class="eyebrow">Portable · Dynamic · Evidence-first</p>
+    <p class="eyebrow">Native orchestration · Repo-aware · Evidence-first</p>
     <h1>A repo that teaches the workflow, not a workflow that <em>assumes</em> the repo.</h1>
-    <p class="lede">Three reusable software-development workflows — <b>/spec</b>, <b>/execute</b>, <b>/review</b> — that inspect the repository at runtime, generate the specialists they need on the fly, separate proof from guesswork, and revise themselves when reality diverges. Five small files. No static checklists, no permanent role library.</p>
+    <p class="lede"><b>/spec</b>, <b>/execute</b>, and <b>/review</b> are thin launchers built on Claude's <b>native Workflow engine</b>. Each gathers repo context (profile + recon) and injects it as static <code>args</code> into a portable, schema-validated workflow script — because the script's sandbox can't read the repo, but the agents it spawns can. Every spawned agent re-orients on that context, uses the repo's real tools, and produces structured evidence. Mandatory requirement gates — declared once at install — ensure the workflow never calls something done without the proof.</p>
   </header>
 
   <section>
-    <h2><span class="n">01</span>Three layers</h2>
-    <p class="sub">Everything in the system sorts into exactly one of three layers. This is the answer to "what is static vs dynamic": the portable layer never names a tool, the repo layer is generated once and maintained, and the dynamic layer is reborn every run.</p>
+    <h2><span class="n">01</span>Four layers</h2>
+    <p class="sub">Everything in the system sorts into exactly one of four layers. The first two are portable and identical everywhere. The third is generated per-repo at install. The fourth is what the user types — thin launchers that wire the others together.</p>
     <div class="layers">
       <div class="layer l1">
-        <span class="tag">Portable · committed · identical everywhere</span>
-        <h3>The contract & the three prompts</h3>
-        <p><code>CONTRACT.md</code> holds the operating rules and the single output format. The three command prompts hold each workflow's goal and phases. None of these name a language, framework, or path — so they drop into any repo unchanged.</p>
-        <div class="chips"><span class="chip static">CONTRACT.md</span><span class="chip static">spec.md</span><span class="chip static">execute.md</span><span class="chip static">review.md</span></div>
+        <span class="tag">Layer 1 · Guideline · Portable · identical everywhere</span>
+        <h3>The orchestration contract</h3>
+        <p><code>CONTRACT.md</code> is the shared operating standard: the launch model (thin launcher → native workflow → structured report), the sandbox truths, the standard agent brief that prevents naked subagents, the tool-awareness rule, adaptive scale, adversarial-verify, and the canonical output schemas. Nothing here names a language, framework, or repo.</p>
+        <div class="chips"><span class="chip static">CONTRACT.md</span><span class="chip static">sandbox rules</span><span class="chip static">standard brief</span><span class="chip static">output schemas</span></div>
       </div>
       <div class="layer l2">
-        <span class="tag">Repo-specific · committed · generated then maintained</span>
-        <h3>The repo profile</h3>
-        <p><code>repo-profile.md</code> is the specialization layer — written by the retrofit interview. It pins the repo's real commands, test &amp; simulation harnesses, the MCP services agents may use, subsystem boundaries, and the merge bar. This is what makes generic agents <em>repo-aware</em>.</p>
-        <div class="chips"><span class="chip repo">canonical commands</span><span class="chip repo">test/sim harnesses</span><span class="chip repo">MCP services</span><span class="chip repo">definition of done</span></div>
+        <span class="tag">Layer 2 · Workflows · Portable · identical everywhere</span>
+        <h3>Native workflow scripts</h3>
+        <p><code>workflows/{spec,execute,review}.js</code> are the actual dynamic workflows — deterministic fan-out, parallel pipelines, adversarial verification, schema-validated results. They are generic: they accept <code>args={profile, recon, target, roster, tools, mandatoryRequirements, …}</code> injected by the launcher, and return a structured object. Identical in every repo.</p>
+        <div class="chips"><span class="chip static">workflows/spec.js</span><span class="chip static">workflows/execute.js</span><span class="chip static">workflows/review.js</span></div>
       </div>
       <div class="layer l3">
-        <span class="tag">Dynamic · ephemeral · reborn every run</span>
-        <h3>Recon, artifacts &amp; runtime roles</h3>
-        <p><code>.workflows/recon.md</code> caches detected repo facts. Per-task specs and review reports hand off between workflows. Specialist reviewers and executors are <em>authored as prompts at runtime</em> — never stored as files. Nothing here is committed.</p>
-        <div class="chips"><span class="chip dyn">recon.md cache</span><span class="chip dyn">spec-*.md / review-*.md</span><span class="chip dyn">runtime subagent roles</span></div>
+        <span class="tag">Layer 3 · Adjustment · Per-repo · generated at install</span>
+        <h3>Repo profile &amp; mandatory requirements</h3>
+        <p><code>repo-profile.md</code> is the specialization layer written by <code>/workflow-install</code>. It pins the roster, canonical commands, invariants → gate tests, agent types, and the repo tools agents must use. Critically, it captures <em>mandatory requirements</em> — install-time gates like "any UI change must produce a browser screenshot" — that the scripts read as <code>args.mandatoryRequirements</code> and enforce via a verification loop.</p>
+        <div class="chips"><span class="chip repo">repo-profile.md</span><span class="chip repo">roster + agent types</span><span class="chip repo">mandatory requirements</span><span class="chip repo">invariant gate tests</span><span class="chip repo">repo tools / MCPs</span></div>
+      </div>
+      <div class="layer l4">
+        <span class="tag">Layer 4 · Entry points · Portable · thin launchers</span>
+        <h3>Command launchers</h3>
+        <p>The <code>/spec</code>, <code>/execute</code>, and <code>/review</code> commands run in the main agent. Each reads the contract and profile, ensures recon is fresh, resolves the target, gathers changed files and canonical commands as FACTs, then calls <code>Workflow({name, args})</code>. The command is what authorises the Workflow tool's opt-in. After the script returns, the command renders the structured result into the §6 report and saves the artifact.</p>
+        <div class="chips"><span class="chip warn">commands/spec.md</span><span class="chip warn">commands/execute.md</span><span class="chip warn">commands/review.md</span><span class="chip warn">Workflow({name, args})</span></div>
       </div>
     </div>
   </section>
 
   <section>
     <h2><span class="n">02</span>The three workflows</h2>
-    <p class="sub">Each is a thin prompt that loads the contract + profile, then runs adaptive phases. They chain through the gitignored <code>.workflows/</code> handoff space.</p>
+    <p class="sub">Each is a native workflow script invoked via <code>Workflow({name, args})</code>. The launcher injects repo context; the script orchestrates deterministic fan-out and returns a structured object the command renders. Artifacts chain through the gitignored <code>.workflows/</code> handoff space.</p>
     <div class="flow">
       <div class="wf">
         <span class="cmd">/spec</span>
         <h3>Spec</h3>
-        <p class="goal">Idea → implementation-ready spec, grounded in real code.</p>
+        <p class="goal">Request → implementation-ready spec grounded in real code and existing patterns.</p>
         <ol class="phases">
-          <li>Orient — recon &amp; canonical commands</li>
-          <li>Gather context — parallel explorers, find patterns</li>
-          <li>Define — criteria, affected areas, risks, test strategy</li>
-          <li>Report &amp; hand off</li>
+          <li><b>Scope</b> — identify the areas and patterns the request touches</li>
+          <li><b>Gather</b> — parallel explorers per area return file:line context and patterns to mirror</li>
+          <li><b>Draft</b> — synthesize a testable spec anchored to existing code</li>
+          <li><b>Critique</b> — adversarially check for gaps, contradictions, untestable criteria</li>
         </ol>
         <div class="out">→ .workflows/spec-&lt;slug&gt;.md</div>
       </div>
       <div class="wf">
         <span class="cmd">/execute</span>
         <h3>Execution</h3>
-        <p class="goal">Spec → adaptive TDD build until criteria &amp; checks pass.</p>
+        <p class="goal">Spec → adaptive TDD build; loops until all criteria and mandatory evidence pass.</p>
         <ol class="phases">
-          <li>Orient &amp; lock acceptance criteria</li>
-          <li>Decompose into verifiable tasks</li>
-          <li>Implement — TDD where a test path exists</li>
-          <li>Readjust on hidden coupling / blocks</li>
-          <li>Converge — loop until green, then verify</li>
+          <li><b>Plan</b> — decompose spec into small, independently verifiable tasks</li>
+          <li><b>Implement</b> — implement each open task (TDD where a test path exists)</li>
+          <li><b>Verify ↺</b> — verifier re-checks each task and its mandatory evidence; misses send work back to Implement</li>
+          <li><b>Checks</b> — final canonical checks + invariant gate tests + mandatory-requirements gate</li>
         </ol>
         <div class="out">→ task ledger + evidence table</div>
       </div>
       <div class="wf">
         <span class="cmd">/review</span>
         <h3>PR Review</h3>
-        <p class="goal">Diff → risk-driven review with a verdict &amp; evidence.</p>
+        <p class="goal">Diff → risk-driven specialist review with adversarial verify and a structured verdict.</p>
         <ol class="phases">
-          <li>Acquire diff (PR / branch / merge-base)</li>
-          <li>Infer risk → choose lenses</li>
-          <li>Spawn specialist reviewers in parallel</li>
-          <li>Run the checks that matter</li>
-          <li>Verify findings adversarially → verdict</li>
+          <li><b>Triage</b> — map the diff to subsystems, risk lenses, and invariants in blast radius</li>
+          <li><b>Review</b> — one specialist per matched roster role or risk lens (parallel)</li>
+          <li><b>Verify</b> — adversarially refute each finding; drop ones that don't survive</li>
+          <li><b>Checks</b> — canonical build/typecheck/lint/tests + invariant gates + mandatory-requirements gate → verdict</li>
         </ol>
         <div class="out">→ .workflows/review-&lt;slug&gt;.md</div>
       </div>
@@ -192,8 +198,8 @@
   </section>
 
   <section>
-    <h2><span class="n">03</span>Evidence &amp; dynamic roles</h2>
-    <p class="sub">Two mechanisms do the heavy lifting: a tagging discipline that keeps proof distinct from narrative, and runtime role generation that replaces a permanent agent library.</p>
+    <h2><span class="n">03</span>Evidence &amp; the standard brief</h2>
+    <p class="sub">Two mechanisms do the heavy lifting: a tagging discipline that keeps proof distinct from narrative, and a shared brief that ensures every spawned agent is oriented on repo context and knows its tools — no naked subagents.</p>
     <div class="twocol">
       <div class="card">
         <h3>Every claim wears a tag</h3>
@@ -203,23 +209,25 @@
           <div class="ev q"><span class="b">QUESTION ?</span><span>needs a human decision — notes what unblocks it</span></div>
           <div class="ev block"><span class="b">BLOCKED ⛔</span><span>can't proceed — notes the blocker &amp; workarounds tried</span></div>
         </div>
-        <p style="margin:1rem 0 0;font-size:.86rem;color:var(--muted);">An assumption never graduates to fact without evidence. The reader can always tell what was proven.</p>
+        <p style="margin:1rem 0 0;font-size:.86rem;color:var(--muted);">An assumption never graduates to fact without evidence. Structured output schemas (Finding / Verdict / Checks / Requirements) encode this discipline at the tool layer — the model retries on schema mismatch.</p>
       </div>
       <div class="card">
-        <h3>Specialists are born from the diff</h3>
+        <h3>No naked subagents — the standard brief</h3>
+        <p style="margin:0 0 .75rem;font-size:.88rem;color:var(--soft);">Every <code>agent()</code> prompt is built through a shared <code>brief()</code>: role → orient on in-scope files + injected profile/recon → use repo tools via <code>ToolSearch</code> → single job → evidence discipline → schema note. Roster roles (from the profile) are spawned first by their real <code>agentType</code>; generic lenses fill the gaps:</p>
         <div class="scroll">
         <table class="roles">
-          <tr><th>Signal present</th><th>Role spawned</th></tr>
-          <tr><td>Auth / secrets / input surface</td><td>security</td></tr>
+          <tr><th>Signal in diff / task</th><th>Generic lens</th></tr>
+          <tr><td>Auth, secrets, input surface, SSRF/SQLi</td><td>security</td></tr>
           <tr><td>Schema / data migration</td><td>data-integrity</td></tr>
           <tr><td>Concurrency / shared state</td><td>race / ordering</td></tr>
-          <tr><td>Public API change</td><td>compatibility</td></tr>
-          <tr><td>Hot path / large data</td><td>performance</td></tr>
-          <tr><td>Stubborn bug</td><td>oracle</td></tr>
+          <tr><td>Public / exported API change</td><td>compatibility</td></tr>
+          <tr><td>Hot path / large data / N+1</td><td>performance</td></tr>
+          <tr><td>UI / frontend change</td><td>uiux</td></tr>
+          <tr><td>Hard bug / murky root cause</td><td>oracle</td></tr>
           <tr><td>Acceptance gate</td><td>verifier</td></tr>
         </table>
         </div>
-        <p style="margin:.9rem 0 0;font-size:.86rem;color:var(--muted);">The role lives in the prompt, authored at runtime — not on disk. Reuses named agents when present, else <code>general-purpose</code>.</p>
+        <p style="margin:.9rem 0 0;font-size:.86rem;color:var(--muted);">The repo roster always goes first. Generic lenses only cover risk the roster misses. A UI lens gets the browser MCP; a data lens gets the DB MCP — tool-awareness from the profile, not guessing.</p>
       </div>
     </div>
   </section>
@@ -237,50 +245,56 @@
       <ul class="triggers">
         <li>repo structure differs from the plan's assumption</li>
         <li>the spec is incomplete or self-contradictory</li>
-        <li>implementation reveals hidden coupling</li>
+        <li>implementation reveals hidden coupling or an undocumented dependency</li>
         <li>the intended test path is unavailable → fall back to characterization / smoke check</li>
         <li>a verification step is blocked → record BLOCKED, gather best alternative evidence</li>
         <li>a PR's real risk profile differs from the first read → re-scope reviewers</li>
+        <li>mandatory-requirement evidence is missing → work re-enters the implement→verify loop until it exists or is BLOCKED ⛔</li>
       </ul>
     </div>
   </section>
 
   <section>
     <h2><span class="n">05</span>Install &amp; retrofit</h2>
-    <p class="sub"><code>/workflow-install</code> drops the portable layer into a repo, then runs detection + a short interview so the agents know this repo's real commands, harnesses, and services.</p>
+    <p class="sub"><code>/workflow-install</code> drops the portable layer into a repo, runs detection, and interviews the user so the scripts know this repo's commands, harnesses, tools — and its non-negotiables.</p>
     <div class="install">
-      <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable contract + 3 commands into <code>.claude/</code>.</p></div>
-      <div class="istep"><div class="num">02</div><h4>Gitignore</h4><p><code>.workflows/</code> scratch space stays uncommitted.</p></div>
-      <div class="istep"><div class="num">03</div><h4>Recon</h4><p>Detect stack, layout, CI's canonical commands.</p></div>
-      <div class="istep"><div class="num">04</div><h4>Interview</h4><p>Fill the gaps detection can't: sims, MCPs, merge bar.</p></div>
-      <div class="istep"><div class="num">05</div><h4>Profile</h4><p>Write <code>repo-profile.md</code> — the specialization layer.</p></div>
+      <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable layer: <code>CONTRACT.md</code> + the three command launchers + <code>workflows/{spec,execute,review}.js</code> into <code>.claude/</code>.</p></div>
+      <div class="istep"><div class="num">02</div><h4>Gitignore</h4><p>Add <code>.workflows/</code> so scratch space and run artifacts stay uncommitted.</p></div>
+      <div class="istep"><div class="num">03</div><h4>Recon</h4><p>Detect stack, layout, CI config, canonical build / typecheck / lint / test commands.</p></div>
+      <div class="istep"><div class="num">04</div><h4>Interview</h4><p>Fill the gaps detection can't: sims, MCPs, merge bar, agent roster — and <em>mandatory requirements</em>: what evidence must every applicable change produce? Which tools must be used?</p></div>
+      <div class="istep"><div class="num">05</div><h4>Profile</h4><p>Write <code>repo-profile.md</code> — the specialization layer the scripts read as injected <code>args</code>.</p></div>
     </div>
   </section>
 
   <section>
     <h2><span class="n">06</span>On disk</h2>
-    <p class="sub">The committed footprint is five small files; the rest is gitignored scratch and in-memory roles.</p>
-    <pre class="tree"><span class="c">portable source — copy to any machine</span>
+    <p class="sub">The committed footprint stays small. The portable layer (contract + scripts + launchers) is identical everywhere; the per-repo profile is the only customisation. Scratch stays gitignored.</p>
+    <pre class="tree"><span class="c">portable source — copy to any machine / kit repo</span>
 ~/.claude/
   workflow-kit/
-    <span class="a">CONTRACT.md</span>            <span class="c"># shared rules + output format</span>
-    templates/            <span class="c"># spec · execute · review · repo-profile</span>
+    <span class="a">CONTRACT.md</span>              <span class="c"># shared rules, schemas, standard brief</span>
+    workflows/               <span class="c"># native workflow scripts</span>
+      <span class="a">spec.js</span>                <span class="c"># Workflow({name:"spec", args:{...}})</span>
+      <span class="a">execute.js</span>             <span class="c"># Workflow({name:"execute", args:{...}})</span>
+      <span class="a">review.js</span>              <span class="c"># Workflow({name:"review", args:{...}})</span>
+    templates/               <span class="c"># repo-profile template</span>
   commands/
-    <span class="a">workflow-install.md</span>    <span class="c"># /workflow-install (global)</span>
+    <span class="a">workflow-install.md</span>      <span class="c"># /workflow-install (global)</span>
 
 <span class="c">per-repo after /workflow-install — committed, shared with team</span>
 &lt;repo&gt;/.claude/
-  workflow-kit/
-    <span class="a">CONTRACT.md</span>            <span class="c"># portable — copied verbatim</span>
-    <span class="g">repo-profile.md</span>        <span class="c"># repo-specific — generated by retrofit</span>
+  <span class="a">CONTRACT.md</span>                <span class="c"># portable — copied verbatim</span>
+  workflows/                 <span class="c"># scripts the Workflow tool resolves by name</span>
+    <span class="a">spec.js  execute.js  review.js</span>
   commands/
-    <span class="a">spec.md  execute.md  review.md</span>
+    <span class="a">spec.md  execute.md  review.md</span>   <span class="c"># thin launchers</span>
+  <span class="g">repo-profile.md</span>            <span class="c"># repo-specific — roster, mandatory requirements, tools</span>
 
 <span class="c">gitignored scratch — handoff &amp; cache</span>
 &lt;repo&gt;/.workflows/
-    <span class="i">recon.md</span>               <span class="c"># cached repo profile, reused by all 3</span>
-    <span class="i">spec-*.md  review-*.md</span>  <span class="c"># cross-session handoff artifacts</span></pre>
+    <span class="i">recon.md</span>                 <span class="c"># cached repo recon, reused by all 3 workflows</span>
+    <span class="i">spec-*.md  review-*.md</span>   <span class="c"># cross-session handoff artifacts</span></pre>
   </section>
 
-  <footer>Workflow Kit · /spec → /execute → /review · evidence over narrative</footer>
+  <footer>Workflow Kit · Native Workflow engine · /spec → /execute → /review · evidence over narrative</footer>
 </div>

@@ -1,157 +1,248 @@
 # Workflow Kit — Shared Contract
 
-The portable operating rules and output format shared by `/spec`, `/execute`,
-and `/review`. **Read this once at the start of any workflow, then obey it for
-the whole run.** It is intentionally generic — nothing here names a language,
-framework, or repo. Everything repo-specific lives in `repo-profile.md` (written
-by the retrofit) and in the ephemeral `.workflows/recon.md` cache.
+The portable operating rules and output format shared by `/spec`, `/execute`, and
+`/review`. **Read this once at the start of any workflow, then obey it for the whole
+run.** It is intentionally generic — nothing here names a language, framework, or
+repo. Everything repo-specific lives in `repo-profile.md` (written by the retrofit)
+and in the ephemeral `.workflows/recon.md` cache.
 
-This file should be identical in every repo. If you find yourself wanting to
-hard-code a repo detail here, put it in `repo-profile.md` instead.
+This file is identical in every repo. If you want to hard-code a repo detail here,
+put it in `repo-profile.md` instead.
 
 ---
 
 ## 0. Prime directive — evidence over narrative
 
-A plausible story is not a result. Prefer a command you ran, a file:line you
-read, or a test that passed over an assertion you believe. When you cannot
-verify something, say so explicitly and label it. The reader must always be able
-to tell **what you proved** from **what you guessed**.
+A plausible story is not a result. Prefer a command you ran, a file:line you read,
+or a test that passed over an assertion you believe. When you cannot verify
+something, say so explicitly and label it. The reader must always be able to tell
+**what you proved** from **what you guessed**.
 
 ---
 
-## 1. Repo recon — always orient before acting
+## 1. The model — thin launcher → native workflow → structured report
 
-Before doing the workflow's real work, build (or load) a current picture of the
-repo. **Cache it** at `.workflows/recon.md` and reuse it across workflows and
-sessions; refresh a section when you touch an area it got wrong.
+These workflows are **centered on Claude's native Workflow tool**. The pieces:
+
+- A **command** (`/spec` `/execute` `/review`) is a *thin launcher* that runs in the
+  main agent: it loads context, resolves the target, then **calls the Workflow
+  tool** with a named workflow and an `args` payload. A command instructing this
+  call is what authorizes the Workflow tool's opt-in.
+- A **workflow script** (`workflows/<name>.js`) does the orchestration —
+  deterministic fan-out, pipelines, adversarial verification — and returns a
+  **structured object**, not prose.
+- The command renders that object into the §6 report, saves the artifact, and prints
+  it. Human-facing text lives in the main agent; data lives in the workflow.
+
+The four layers (see `PLAN.md`): **Guideline** (this file) · **Workflows**
+(`workflows/*.js`) · **Adjustment** (`workflow-install` → `repo-profile.md`) ·
+**Entry points** (the commands). The first two are portable and identical
+everywhere; the third is per-repo.
+
+---
+
+## 2. Repo recon — always orient before launching
+
+Before launching a workflow, the command builds (or loads) a current picture of the
+repo and **passes it into the workflow as `args`** (the script can't read the repo —
+see §4). Cache it at `.workflows/recon.md` and reuse it across workflows/sessions.
 
 Order of truth: `repo-profile.md` (human-confirmed) **>** `recon.md` (cached) **>**
-fresh detection **>** your priors. If `repo-profile.md` exists, load it first and
-treat it as ground truth for commands, services, and boundaries.
+fresh detection **>** priors. If `repo-profile.md` exists, load it first and treat it
+as ground truth for commands, services, roster, invariants, and boundaries.
 
-Detect, don't assume — look for the signal, then record what you found:
+Detect, don't assume — find the signal, then record it:
 
-- **Language / toolchain** — manifest files: `package.json`, `Cargo.toml`,
-  `go.mod`, `pyproject.toml`/`setup.py`/`requirements.txt`, `pom.xml`/`build.gradle`,
-  `Gemfile`, `composer.json`, `*.csproj`, `pubspec.yaml`, `mix.exs`, `deno.json`.
+- **Language / toolchain** — manifests: `package.json`, `Cargo.toml`, `go.mod`,
+  `pyproject.toml`/`requirements.txt`, `pom.xml`/`build.gradle`, `Gemfile`,
+  `composer.json`, `*.csproj`, `pubspec.yaml`, `mix.exs`, `deno.json`.
 - **Repo layout** — single vs monorepo (workspaces, `packages/`, `apps/`,
-  `services/`, `turbo.json`/`nx.json`/`pnpm-workspace.yaml`/Cargo workspace). Map
-  the top-level subsystems and their boundaries.
-- **Build / typecheck / lint / test commands** — `package.json` scripts,
-  `Makefile`/`justfile`/`Taskfile.yml`, `tox.ini`, CI configs
-  (`.github/workflows/`, `.gitlab-ci.yml`, `.circleci/`), `pre-commit-config`,
-  formatter/linter configs (eslint, prettier, ruff, black, clippy, gofmt). The CI
-  config is the most reliable source of the *canonical* commands.
-- **Test framework & how tests are run** — locate existing tests, infer the
-  runner, and note the *fastest way to run a single test or a scoped subset*.
-- **Conventions & similar patterns** — before writing code, find 2–3 existing
-  examples of the thing you're about to do and match their structure, naming,
-  error handling, and test style. Read `editorconfig`, lint rules, and any
-  `CONTRIBUTING`/`ARCHITECTURE`/ADR docs.
-- **Architecture & docs** — `README`, `docs/`, `ARCHITECTURE.md`, ADRs, package
-  README files. Note where the source of truth for design lives.
-- **Available services & tools** — anything the workflows can *use* for stronger
-  evidence: local run/dev commands, simulation or fixture harnesses, seed data,
-  MCP servers connected to this repo (DBs, browsers, issue trackers, docs). These
-  are usually recorded in `repo-profile.md`; honor them.
+  `services/`, `turbo.json`/`nx.json`/`pnpm-workspace.yaml`). Map the subsystems.
+- **Build / typecheck / lint / test commands** — package scripts,
+  `Makefile`/`justfile`/`Taskfile.yml`, CI configs (`.github/workflows/`,
+  `.gitlab-ci.yml`), `pre-commit`, linter/formatter configs. **CI config is the most
+  reliable source of the canonical commands.**
+- **Test framework & how tests run** — locate tests, infer the runner, note the
+  *fastest way to run a single test or scoped subset*.
+- **Conventions & patterns** — before any code, find 2–3 existing examples of the
+  thing and mirror them. Read `editorconfig`, lint rules, `CONTRIBUTING`/`ARCHITECTURE`/ADRs.
+- **Services & tools** — anything a workflow can *use* for stronger evidence: run/dev
+  commands, sim/fixture harnesses, seed data, MCP servers connected to this repo (DBs,
+  browsers, issue trackers, docs). Recorded in `repo-profile.md`; honor them.
 
-Recon is cheap relative to being wrong. When unsure, delegate the sweep to a
-read-only search subagent (see §3) and cache the conclusion.
+Recon is cheap relative to being wrong.
 
 ---
 
-## 2. Evidence discipline — tag every claim
+## 3. Evidence discipline — tag every claim
 
-Every statement you carry forward or report is **exactly one** of:
+Every statement carried forward or reported is **exactly one** of:
 
-- **FACT ✓** — verified by command output, file:line, or a passing/failing test.
-  Cite the evidence inline.
-- **ASSUMPTION ~** — plausible but unverified. Note *how it could be verified* and
-  what breaks if it's wrong.
-- **QUESTION ?** — needs a human/maintainer decision or info you can't obtain.
-  Note *what unblocks it*.
-- **BLOCKED ⛔** — cannot proceed on this thread. Note the blocker and the
-  workarounds you already tried.
+- **FACT ✓** — verified by command output, file:line, or a passing/failing test. Cite
+  the evidence inline.
+- **ASSUMPTION ~** — plausible but unverified. Note *how to verify* and what breaks if
+  wrong.
+- **QUESTION ?** — needs a human decision or info you can't obtain. Note *what
+  unblocks it*.
+- **BLOCKED ⛔** — cannot proceed on this thread. Note the blocker and workarounds
+  tried.
 
-Never let an ASSUMPTION graduate to FACT without evidence. If you state something
-as fact, a reader must be able to click the citation and see it. Promote
-assumptions to facts only by verifying them, and say when you did.
+Never let an ASSUMPTION graduate to FACT without evidence. The structured output
+schemas (§4.7) encode this discipline; the §6 report surfaces it.
 
 ---
 
-## 3. Dynamic roles — generate specialists at runtime, don't rely on fixed files
+## 4. Orchestration contract — how every workflow script must behave
 
-Do **not** depend on a library of permanent role files. Decide *from the recon
-and the task* which specialists you need, then **author each role prompt at
-runtime** and spawn it with the Agent tool. The role prompt should name: the
-specific files/area in scope, the single question the agent must answer, the
-evidence it must return, and the output schema (use the §5 contract).
+This is the heart of the kit. A workflow that ignores §4 reintroduces exactly the
+failure modes orchestration is supposed to avoid.
 
-**Roster precedence — this is the superpower.** No two repos need the same crew:
-a sim-heavy k8s repo wants scenario-runners and cluster-state inspectors; a
-data-intensive UI repo wants browser-driving and visual/data-diff reviewers; an
-airgapped LLM agent wants invariant guardians and grounding evaluators. So:
+### 4.1 Launch from the command, orchestrate in the script
 
-1. If `repo-profile.md` defines a **Specialist roster** and **Invariants & gate
-   tests**, those are this repo's *standing crew and acceptance gates* — instantiate
-   them **first**, by name, and run their owned gate tests. They were derived from
-   this repo's architecture; they beat any generic guess.
-2. Use the generic table below only as a **portable fallback** — to fill risk
-   lenses the roster doesn't cover, or in a repo with no profile yet.
+The command resolves the target and gathers repo context (§2), then calls
+`Workflow({ name: '<name>', args: {...} })`. The script never asks the user
+anything and never prints the final human report — it returns structured data.
 
-Generic fallback — spawn a role only when the signal is present:
+### 4.2 Sandbox truths — inject static context, delegate live work
 
-| Signal in the diff / task / recon | Spawn a role focused on… |
+Workflow scripts run in a **restricted JS sandbox**:
+
+- **No filesystem / Node APIs.** A script *cannot* read `repo-profile.md` or run
+  `git`. ⇒ The command passes all static repo knowledge in `args` (`profile`,
+  `recon`, `commands`, `roster`, `invariants`, `tools`, `target`, `base`,
+  `changedFiles`, `scale`, `slug`).
+- **No `Date.now()` / `Math.random()` / argless `new Date()`** (they break resume).
+  ⇒ Pass any timestamp/slug via `args`; vary agents by index, not randomness.
+- **But the agents a script spawns are NOT sandboxed** — they have full Bash, Read,
+  and MCP access. ⇒ Let subagents do the *live* repo work: read files, run
+  `git diff`/`gh pr diff`, run tests, query MCP services.
+
+Static knowledge flows in via `args`; live evidence is gathered by the agents.
+
+### 4.3 No naked subagents — the standard brief
+
+**Every `agent()` prompt is built through one shared `brief()` helper** so no agent
+starts blind. The brief always contains, in order:
+
+1. **Role** — the one specialist hat this agent wears.
+2. **Orient first** — read the in-scope files end-to-end and the actual diff/hunks;
+   plus the injected `profile` and `recon` as ground truth (or "no profile — detect
+   conventions from neighbouring files" when absent).
+3. **Tools** — the repo tools/services/MCPs this agent should use for real evidence,
+   and that it must load them with `ToolSearch ("select:<name>")` before use (§4.4).
+4. **Single job** — the one narrow question it must answer.
+5. **Evidence discipline** — tag claims per §3; cite file:line; a claim without
+   evidence is a QUESTION, not a FACT.
+6. **Schema note** — return only the structured object; it is data, not a message.
+
+### 4.4 Tool-awareness rule
+
+Orchestrated agents must use the repo's real tools instead of guessing. The command
+passes `args.tools` (from the profile's "Services & MCP" + "execution mode"
+sections); the brief names them and tells the agent to `ToolSearch` them. A UI lens
+gets the browser MCP; a data lens gets the DB MCP; a sim-heavy repo gets its
+scenario runner. If the profile lists no tools, the agent still has Bash/Read.
+
+### 4.5 Specialist roster first, generic lenses to fill gaps
+
+Spawn the repo's **named roster** (from `repo-profile.md`) **first**, each by its real
+`agentType` (`Explore`, `oracle`, `verifier`, `uiux`, `general-purpose`, or a custom
+type) — they were derived from this repo's architecture and beat any generic guess.
+Use the generic lens table only to cover risk the roster misses:
+
+| Signal in diff / task / recon | Generic lens |
 |---|---|
-| Broad "where does X live / how is Y done" search | read-only explorer (use `Explore`) |
-| Auth, crypto, secrets, input handling, deserialization, SSRF/SQLi surface | security reviewer |
-| Schema/data migrations, persistence changes | data-integrity & migration-safety reviewer |
-| Concurrency, async, locking, shared state | race/ordering reviewer |
-| Public API / exported interface / protocol change | compatibility & contract reviewer |
-| Perf-sensitive path, hot loop, N+1, large data | performance reviewer |
-| UI / frontend change | UX + accessibility reviewer (`uiux` if available) |
-| Hard bug, repeated failure, murky root cause | deep-debug investigator (`oracle` if available) |
-| Final acceptance gate | verifier (`verifier` if available) — checks, never fixes |
+| Broad "where/how" search | read-only explorer (`Explore`) |
+| Auth, crypto, secrets, input handling, deserialization, SSRF/SQLi | security |
+| Schema/data migrations, persistence | data-integrity & migration-safety |
+| Concurrency, async, locking, shared state | race/ordering |
+| Public/exported API or protocol change | compatibility & contract |
+| Perf-sensitive path, hot loop, N+1, large data | performance |
+| UI / frontend change | UX + accessibility (`uiux`) |
+| Hard bug, murky root cause | deep-debug (`oracle`) |
+| Final acceptance gate | verifier (`verifier`) — checks, never fixes |
 
-Prefer the repo's named agents (`Explore`, `oracle`, `verifier`, `uiux`,
-`general-purpose`) **if they exist**; otherwise spawn `general-purpose` with the
-role baked into the prompt. The role lives in the *prompt*, not on disk. Launch
-independent roles in a single batch so they run in parallel, give each a
-**narrow** scope, and synthesize their structured findings yourself — never dump
-raw subagent output. For very large fan-outs the Workflow tool is an optional
-accelerator, but the portable default is batched Agent calls.
+### 4.6 Adaptive scale + budget
+
+Always launch; **scale fan-out to the work**, not a fixed size:
+
+- Derive scale from task size (e.g. changed-file count) unless the user says
+  `quick`/`thorough`/`audit`.
+- A `quick` task spawns the minimum (1–2 lenses, single-vote verify); a `thorough`
+  one spawns the full roster + generic lenses + a 3-vote perspective-diverse verify
+  panel.
+- `budget.total` (the user's "+Nk" directive) is a **hard ceiling**. Gate expensive
+  stages on `budget.remaining()`, degrade gracefully, and `log()` anything dropped —
+  silent truncation reads as "covered everything" when it didn't.
+
+### 4.7 Structured output — the canonical schemas
+
+Pass a JSON Schema to `agent({schema})` so output is validated at the tool layer
+(the model retries on mismatch). This is how we recover the determinism the prose
+era lacked. The canonical shapes the scripts use:
+
+- **Finding** — `{ title, file, line, severity: high|med|low, lens, why,
+  suggestedFix, evidence }`
+- **Verdict** (adversarial verify) — `{ refuted: bool, confidence: high|med|low,
+  reasoning }`
+- **Checks** — `{ checks: [{name, command, result: pass|fail|blocked, keyLine}],
+  invariantGates: [{invariant, command, result, evidence}] }`
+- **Spec** — `{ problem, acceptanceCriteria: [{id, criterion, verifyBy}],
+  affectedAreas, approach, testStrategy, risks, openQuestions }` (see `spec.js`).
+- **TaskLedger** — `{ tasks: [{id, criterion, status, rounds, evidence}], converged,
+  stopReason }` (see `execute.js`).
+
+A workflow returns one structured object; the command turns it into the §6 report.
+
+### 4.8 Mandatory requirements — the user's install-time gates
+
+The retrofit interview asks the user, **right at install**, what this repo treats as
+non-negotiable for a change: a test that must pass, a cycle that must run
+(eval/sim/soak), an MCP/tool that must be used, an artifact that must be produced
+(e.g. a screenshot proving a UI change works). These land in `repo-profile.md` as
+`{ requirement, appliesWhen, requiredEvidence }` and reach scripts as
+`args.mandatoryRequirements`. This — not editing the script — is how the workflow is
+"changed to fit the repo": the portable script reads the repo's declared gates.
+
+Enforcement is a **verification loop, not a one-shot block**. The agent should know
+better than to declare done without the evidence:
+
+- In `/execute`, a verifier checks the required evidence was produced; if it's
+  missing, the work goes **back into the implement→verify loop** until it exists (or
+  is recorded BLOCKED ⛔ with why).
+- In `/review`, an unmet mandatory requirement means the verdict **cannot be
+  APPROVE** — `REQUEST CHANGES` if fixable, `BLOCK` if the evidence can't be gathered.
+
+"Mandatory" means mandatory: the workflow never papers over a missing requirement.
 
 ---
 
-## 4. Dynamic readjustment — revise when reality diverges
+## 5. Dynamic readjustment — revise when reality diverges
 
-You are expected to be wrong about some things up front. When you hit one of
-these triggers, **stop, record the delta, revise, and continue** — do not push a
-broken plan forward:
+You will be wrong about some things up front. When you hit a trigger, **stop, record
+the delta, revise, continue** — never push a broken plan:
 
-- the repo structure differs from what the plan assumed;
+- repo structure differs from what the plan/args assumed;
 - the spec is incomplete or self-contradictory;
 - implementation reveals hidden coupling or an undocumented dependency;
 - the intended test path is unavailable (no harness, can't run, needs creds);
 - a verification step is blocked (network, secrets, flaky env);
 - a PR's real risk profile differs from the first read.
 
-The readjust loop: **Observe** (what did I expect vs find?) → **Reframe** (what
-does this change?) → **Re-plan** (smallest change to the task list/approach) →
-**Log** it in the report's *Readjustments* section → continue. Every readjustment
-is visible in the final output; silent course changes are not allowed. If a
-chosen path is blocked, record it as BLOCKED ⛔ and switch to the best available
-alternative (e.g. test path unavailable → add a characterization test or a
-runtime smoke check and say so).
+The loop: **Observe** (expected vs found) → **Reframe** → **Re-plan** (smallest change)
+→ **Log** it (in the workflow's returned `readjustments` and the report's
+*Readjustments* section) → continue. Silent course changes are not allowed. A blocked
+path is recorded BLOCKED ⛔ with the best alternative taken (e.g. no test path → add a
+characterization test or runtime smoke check, and say so).
 
 ---
 
-## 5. Output contract — every workflow ends in this shape
+## 6. Output contract — every workflow ends in this shape
 
-Lead with the summary. Use the exact section headers below (workflows add their
-own body section — a spec, a task ledger, a verdict — above *Recommended next
-action*). Keep it scannable; cite evidence; never pad.
+The launching command renders this from the workflow's structured return. Lead with
+the summary; use the exact headers (workflows add their own body section — a spec, a
+task ledger, a verdict — above *Recommended next action*). Scannable; cite evidence;
+never pad.
 
 ```
 ## <Spec | Execution | Review> Report — <subject>
@@ -187,15 +278,15 @@ If a section is empty, write "none" rather than deleting it — absence is a sig
 
 ---
 
-## 6. Artifacts — where things get written
+## 7. Artifacts — where things get written
 
-- All durable workflow output goes under **`.workflows/`** in the repo root, which
-  is **gitignored** (the installer adds it). It is a scratch/handoff space, not a
-  committed deliverable.
-  - `.workflows/recon.md` — cached repo profile (this contract's §1 output).
+Scripts can't write files; the **command** writes them after the workflow returns.
+
+- Durable output goes under **`.workflows/`** in the repo root, which is
+  **gitignored** (the installer adds it) — scratch/handoff space, not a deliverable.
+  - `.workflows/recon.md` — cached repo profile (§2 output).
   - `.workflows/spec-<slug>.md` — specs (handoff from `/spec` to `/execute`).
   - `.workflows/review-<slug>.md` — review reports.
-- Always **also print the report inline** in chat; the file is for handoff and
-  re-use across sessions, not a substitute for talking to the user.
-- The only committed, human-maintained files are this `CONTRACT.md`, the three
-  command prompts, and `repo-profile.md`. Keep that set small.
+- Always **also print the report inline** in chat; the file is for handoff/re-use.
+- The only committed, human-maintained files are this `CONTRACT.md`, the command
+  prompts, the `workflows/*.js` scripts, and `repo-profile.md`. Keep that set small.

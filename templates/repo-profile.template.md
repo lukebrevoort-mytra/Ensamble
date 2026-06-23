@@ -21,6 +21,22 @@ proves it. The workflows treat these as **automatic acceptance criteria** for an
 change in their blast radius, and `/review` weights them by default.
 - **<invariant>** — proven by: `<test/command>` — applies when: <which paths>
 
+## Mandatory requirements — the user's install-time gates
+What this repo treats as **non-negotiable** for a change, decided by the user during
+`/workflow-install` and enforced as hard gates by the workflows (CONTRACT §4.8). Not
+"properties that never regress" (those are invariants above) but **process/evidence
+requirements**: a cycle that must run, a tool that must be used, an artifact that
+must be produced. **Machine-read by the scripts — keep the three fields exact.**
+Enforcement is a loop: `/execute`'s verifier sends work back until the evidence
+exists; `/review` refuses APPROVE without it.
+- **<requirement>** — `appliesWhen:` <which changes trigger it> — `requiredEvidence:`
+  <the concrete proof: a passing test name, eval/sim output, a screenshot of the
+  working UI, a soak result>
+  - e.g. **UI must be shown working** — appliesWhen: any change under `web/` —
+    requiredEvidence: a screenshot (via the browser MCP) of the changed view.
+  - e.g. **Sim scenario must run** — appliesWhen: changes to the planner — required
+    Evidence: `<sim cmd>` output showing the scenario passes.
+
 ## Stack & layout
 - **Languages / toolchain:** <e.g. TypeScript + Rust; Node 20; pnpm>
 - **Repo shape:** <single | monorepo>; subsystems / packages and their roles:
@@ -65,10 +81,16 @@ The workflows can use these for stronger, runtime evidence — name them explici
 ## Specialist roster — this repo's standing crew (derived, not generic)
 The named subagents this repo's work characteristically needs, derived from the
 character + invariants above. Workflows instantiate these **by name first**
-(CONTRACT §3), falling back to the generic table only for gaps. Each entry: the
-role, when to spawn it, its scope, and the concrete evidence/checks it owns.
-- **<Role name>** — spawn when: <signal> — scope: <paths> — owns: <the specific
-  tests/commands/questions it must run and answer>
+(CONTRACT §4.5), falling back to the generic lens table only for gaps.
+
+Each entry is **machine-read by the workflow scripts**, so keep the fields exact:
+- **<Role name>** — `agentType:` <native agent to spawn: `Explore` | `oracle` |
+  `verifier` | `uiux` | `general-purpose` | custom> — spawn when: <signal> —
+  scope: <paths> — owns: <the specific tests/commands/questions it must run and
+  answer>
+
+`agentType` must be a real agent available in this repo; when in doubt use
+`general-purpose` (the role lives in the prompt the script builds, not on disk).
 
 ## Characteristic execution & verification mode
 How a change is actually proven *done* here — this differs sharply by repo type

@@ -1,63 +1,66 @@
 ---
-description: Execution workflow — implement a spec adaptively with TDD where it fits, revising the plan as reality emerges, until criteria are met and checks pass
+description: Execution workflow — resolve a spec, ensure a working branch, then launch the native `execute` workflow (plan → implement→verify loop → gate checks) and render a task ledger
 ---
 
-You are running the **Execution workflow**. Goal: implement the spec below
-adaptively and finish only when the acceptance criteria are met **and** the
-relevant checks pass — with evidence.
+You are the **thin launcher** for the Execution workflow. You do **not** implement
+the spec yourself — you resolve the spec, ensure a safe branch, **call the native
+Workflow tool** to run the `execute` orchestration (which loops implement→verify
+until criteria and mandatory evidence are satisfied), then render its task ledger.
+The fact that this command instructs you to call `Workflow` is what authorizes its
+opt-in; launch it without asking for further permission.
 
-First, load the rules and the spec:
-1. Read `.claude/workflow-kit/CONTRACT.md` and follow it for the whole run.
-2. If `.claude/workflow-kit/repo-profile.md` exists, read it and treat it as
-   ground truth (canonical commands, test/sim harnesses, services/MCPs, "done"
-   bar).
-3. Resolve the input below to a spec: if it's a path (e.g. `.workflows/spec-*.md`)
-   read it; if it's pasted spec text, use it; if it's a raw request with no spec,
-   produce a lightweight inline spec first (problem + acceptance criteria + test
-   strategy) and proceed.
+## 1 — Load the rules & profile
+1. Read `.claude/workflow-kit/CONTRACT.md` and obey it for the whole run.
+2. If `.claude/workflow-kit/repo-profile.md` exists, read it as ground truth and parse:
+   - `commands` — `{build, typecheck, lint, test, testScoped}`.
+   - `roster` — `[{name, agentType, whenToSpawn, scope, ownsChecks}]`.
+   - `invariants` — `[{name, blastRadius, gateTest}]`.
+   - `mandatoryRequirements` — `[{requirement, appliesWhen, requiredEvidence}]` (the
+     hard gates the implement→verify loop must satisfy, CONTRACT §4.8).
+   - `tools` — tool/MCP/service ids the implementer/verifier should use.
+   - `agentTypes` — `{coder, verifier}` mapped to real agents here (default both
+     `general-purpose`; use `verifier` for the verifier if this repo has it).
+   If the profile is missing, proceed with empty values and flag the gap.
 
-Then work the loop, readjusting per CONTRACT §4 whenever reality diverges:
+## 2 — Ensure recon
+Load `.workflows/recon.md` if fresh; otherwise run CONTRACT §2 recon and cache it.
 
-**1 — Orient & lock criteria.** Load/refresh `.workflows/recon.md`. Restate the
-acceptance criteria as a checklist; these are your definition of done. **Add any
-profile Invariants whose blast radius this change touches — their gate tests are
-non-negotiable acceptance criteria.** Note the profile's characteristic execution
-mode (eval/sim/browser/etc.) — you'll converge against *that* signal, not just
-"tests green". Confirm the canonical commands as FACTs by checking they exist.
+## 3 — Resolve the spec
+Resolve `$ARGUMENTS` to a spec: a path (e.g. `.workflows/spec-*.md`) → read it;
+pasted spec text → use it; a raw request with no spec → produce a lightweight inline
+spec first (problem + testable acceptance criteria + test strategy). Pass the spec
+text in as `spec`.
 
-**2 — Decompose.** Break the work into small, independently verifiable tasks and
-track them with the task tools. Sequence by dependency; note which tasks have a
-real test path and which don't.
+## 4 — Ensure a safe working branch
+This workflow **edits files**. If you're on the repo's default branch, create a
+feature branch first (never implement on `main`/`master`). Record the branch name to
+pass as `branch` and to report. Never discard uncommitted user changes.
 
-**3 — Implement, task by task.** For each task:
-   - **TDD when a test path exists:** write a failing test that encodes the
-     criterion → implement the minimum to pass → confirm green → refactor. When no
-     test path exists, say so (BLOCKED ⛔ on TDD) and fall back to a characterization
-     test or a runtime smoke check, and note it.
-   - Match existing conventions (you found patterns in recon; mirror them).
-   - After each meaningful change, run the **scoped** checks (the single test/
-     subset, then typecheck/lint) and capture real output as evidence.
-   - Delegate scoped sub-work or hard bugs to runtime-authored subagents per
-     CONTRACT §3 — prefer the profile's **Specialist roster** (e.g. its invariant
-     guardian or domain reviewer) before the generic table; keep the main thread
-     integrating.
+## 5 — Launch the native workflow
+Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
+- `Workflow({ name: "execute", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/execute.js", args })`
 
-**4 — Readjust as you learn.** Hidden coupling, a wrong assumption in the spec, an
-unavailable test path, a blocked check — when these surface, update the task list,
-log the delta in *Readjustments*, and continue. Don't grind a broken plan.
+with `args` =
+```
+{ profile, recon, spec, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, scale, slug, branch }
+```
+Let the script own decomposition and the implement→verify→loop-back cycle. It loops
+until every acceptance criterion is met **and** the repo's mandatory evidence is
+produced (e.g. a screenshot proving the UI works), or it hits its round/budget cap.
 
-**5 — Converge.** Loop steps 3–4 until **every** acceptance criterion is satisfied
-and the relevant checks pass — including the profile's invariant gate tests and its
-characteristic acceptance signal (run the execution-mode harness, e.g. evals, when
-the change warrants it). Then run the full relevant check set
-(build + typecheck + lint + tests) once more and capture the output. If failures
-persist after a couple of focused attempts, escalate to a deep-debug investigator
-rather than thrashing. Optionally run a `verifier` pass as an independent gate.
+## 6 — Render the ledger & hand off
+The workflow returns `{ converged, stopReason, rounds, tasks[], checks,
+mandatoryRequirements, blockers, coverage }`. Render the **CONTRACT §6 report** with
+the **task ledger as the body** (each task → done/blocked/unfinished + the criterion
+it satisfies + evidence), and the *Evidence / checks run* table from `checks`. State
+plainly which criteria are met (FACT ✓) and which are not.
+- If `converged` is true → recommend `/review` of the branch.
+- If not → lead with `stopReason`, list the unfinished tasks + any unmet mandatory
+  requirements (and what evidence is missing), and recommend the next step (re-run
+  with more budget, answer an open question, or escalate a blocker to deep-debug).
 
-**6 — Report.** Emit the CONTRACT §5 report. The body section is a **task ledger**
-(each task → done/blocked + the criterion it satisfies) and the *Evidence / checks
-run* table must show the actual final commands and results. State plainly which
-criteria are met (FACT ✓) and which are not. Recommend the next action — typically
-`/review` of the resulting branch.
+**Do not declare done unless `converged` is true.** A missing mandatory requirement
+or a failing check means it is not done — say so. Save nothing unless asked; the
+branch + the printed ledger are the handoff.
 
-Spec or request: $ARGUMENTS
+Spec or request (path, pasted spec, or raw text; optional `quick`/`thorough`): $ARGUMENTS

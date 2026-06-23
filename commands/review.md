@@ -1,58 +1,76 @@
 ---
-description: Review workflow — review a branch or PR dynamically, inferring risk, spawning the right specialist reviewers, running checks, and giving a verdict with evidence
+description: Review workflow — gather repo context, then launch the native `review` workflow (triage → specialist fan-out → adversarial verify → gate checks) and render a verdict with evidence
 ---
 
-You are running the **Review workflow**. Goal: review the target branch/PR below,
-infer where the risk actually is, verify findings, and deliver a verdict backed by
-evidence and named residual risks — not a generic checklist pass.
+You are the **thin launcher** for the Review workflow. You do **not** review the
+code yourself — you gather repo context, **call the native Workflow tool** to run
+the `review` orchestration, then render its structured result as the report. The
+fact that this command instructs you to call `Workflow` is what authorizes its
+opt-in; launch it without asking the user for further permission.
 
-First, load the rules:
-1. Read `.claude/workflow-kit/CONTRACT.md` and follow it for the whole run.
-2. If `.claude/workflow-kit/repo-profile.md` exists, read it and treat it as
-   ground truth (canonical commands, services/MCPs, what blocks a merge here).
+## 1 — Load the rules & profile
+1. Read `.claude/workflow-kit/CONTRACT.md` and obey it for the whole run.
+2. If `.claude/workflow-kit/repo-profile.md` exists, read it and treat it as ground
+   truth. From it, parse the structured fields the workflow needs:
+   - `roster` — array of `{name, agentType, whenToSpawn, scope, ownsChecks}` from
+     the **Specialist roster** section. `agentType` is the native agent to spawn
+     (`Explore`/`oracle`/`verifier`/`uiux`/`general-purpose` or a custom type).
+   - `invariants` — array of `{name, blastRadius, gateTest}` from **Invariants &
+     gate tests**.
+   - `tools` — the tool/MCP/service ids from **Services & MCP** + **execution
+     mode** that reviewers should use for evidence.
+   - `commands` — `{build, typecheck, lint, test, testScoped}` from **Canonical
+     commands**.
+   - `mandatoryRequirements` — array of `{requirement, appliesWhen, requiredEvidence}`
+     from **Mandatory requirements** — this repo's install-time hard gates.
+   If the profile is missing, proceed with empty arrays and flag the gap as a
+   QUESTION — the workflow still runs with generic lenses.
 
-Then work the phases, readjusting per CONTRACT §4 whenever reality diverges:
+## 2 — Ensure recon
+Load `.workflows/recon.md` if fresh; otherwise run CONTRACT §2 recon and cache it.
+Capture the recon text (or a tight summary) to pass to the workflow.
 
-**1 — Acquire the diff.** Resolve the target: a PR number/URL (`gh pr diff`), a
-branch name, or default to the current branch vs its base. Find the base by
-merge-base with the repo's default branch; don't assume `main`. Get the full diff,
-the file list, and the PR description/linked issue if present. Establish the
-changed surface as FACTs.
+## 3 — Resolve the target (these become FACTs you pass in)
+Parse `$ARGUMENTS`: a PR number/URL, a branch name, a scale hint (`quick` /
+`thorough` / `audit`), or empty (= current branch).
+- **base:** merge-base with the repo's **default branch** — detect it, don't assume
+  `main` (`git symbolic-ref refs/remotes/origin/HEAD` or `gh repo view`).
+- **changedFiles:** the file list in the diff (`git diff --name-only <base>...HEAD`
+  or `gh pr diff --name-only`).
+- **target:** the human label of what's under review (PR #, branch, or "current").
+- **scale:** `quick`/`thorough` if the user said so (or "audit" → `thorough`),
+  else `auto` (the workflow derives it from `changedFiles.length`).
+- **slug:** a short kebab slug for the artifact filename (from the branch/PR — you
+  may use the date here; the *script* cannot, so compute it now).
 
-**2 — Infer risk & adapt.** From the diff, map which subsystems are touched and
-what *kinds* of risk are present (security, data/migrations, concurrency, public
-API/contract, performance, UI, build/release). Don't pre-commit to a fixed
-checklist — let the diff choose the lenses. If the risk profile turns out
-different than the first read, re-scope (CONTRACT §4) and log it.
+## 4 — Launch the native workflow
+Call the Workflow tool. Prefer the installed named workflow; fall back to the kit
+script by path if this repo hasn't installed it yet:
+- installed:  `Workflow({ name: "review", args })`
+- not yet installed:  `Workflow({ scriptPath: "<KIT>/workflows/review.js", args })`
 
-**3 — Spawn specialist reviewers (runtime roles).** Instantiate the profile's
-**Specialist roster** first (CONTRACT §3) — those named reviewers are this repo's
-standing crew; spawn the ones whose trigger the diff matches. Then use the generic
-table only to cover risk lenses the roster misses. Author each role prompt scoped
-to the *specific changed files*; launch in parallel; each returns structured
-findings with file:line evidence and severity. Also spawn a read-only explorer for
-"does this change break callers elsewhere" sweeps.
+with `args` =
+```
+{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, scale, slug }
+```
+Do not duplicate the orchestration here — the script owns triage, the specialist
+fan-out, adversarial verification, and check-running. Let it run.
 
-**4 — Run the checks that matter.** Run the canonical build/typecheck/lint and the
-tests covering the changed areas (scoped first, full set if feasible). **If the
-diff falls in the blast radius of any profile Invariant, run that invariant's gate
-test as a mandatory acceptance check** — a passing gate is the strongest evidence
-the invariant held. Run the characteristic execution-mode checks too (e.g. evals
-if behavior changed). Capture real output. If a check is blocked (no creds, no
-env), record BLOCKED ⛔ and the best alternative evidence you could gather.
+## 5 — Render the verdict & hand off
+The workflow returns a structured object:
+`{ verdictSuggested, riskMap, findings[], checks, mandatoryRequirements, coverage, scale }`.
+Turn it into the **CONTRACT §6 report**, with the body section being the
+**verdict** — finalize `verdictSuggested` yourself (`APPROVE` / `APPROVE WITH NITS`
+/ `REQUEST CHANGES` / `BLOCK`), findings grouped by severity (each: file:line, why,
+suggested fix), the *Evidence / checks run* table from `checks`, and explicit
+**residual risks** from `coverage` (lenses capped, gates blocked, dropped-to-budget,
+mandatory requirements unmet/blocked). An unmet mandatory requirement means the
+verdict **cannot be APPROVE** (CONTRACT §4.8) — `REQUEST CHANGES`, or `BLOCK` if it
+couldn't be verified; name the requirement and the evidence that's missing.
+If the workflow returns `{error}`, surface it and recommend the fix (usually: confirm
+the target resolves to a real diff, then re-run).
 
-**5 — Verify findings adversarially.** Before reporting any finding, confirm it's
-real: re-read the code, or have an independent pass try to refute it. Drop the ones
-that don't survive. A plausible-but-unverified concern is an *Open question*, not a
-finding. This is the difference between a review and a guess.
+Save the report to `.workflows/review-<slug>.md` and **also print it inline**.
+Review the code; do not fix it. If asked to fix, hand specific items to `/execute`.
 
-**6 — Verdict.** Emit the CONTRACT §5 report. The body section is the **verdict**:
-`APPROVE` / `APPROVE WITH NITS` / `REQUEST CHANGES` / `BLOCK`, with findings grouped
-by severity (each: file:line, why it matters, suggested fix) and explicit
-**residual risks** (what you did *not* or *could not* verify). Save to
-`.workflows/review-<slug>.md` and print inline. Recommend the next action.
-
-Review the code; do not fix it here. If asked to fix, hand specific items to
-`/execute`.
-
-Target (PR number/URL, branch, or empty for current branch): $ARGUMENTS
+Target (PR number/URL, branch, optional `quick`/`thorough`, or empty for current branch): $ARGUMENTS
