@@ -1,4 +1,4 @@
-# PLAN — Workflow Kit, re-centered on the native Workflow tool
+# PLAN — Ensemble, re-centered on the native Workflow tool
 
 Living architecture doc for the pivot. The kit used to be a **prompt harness** that
 treated Claude's native Workflow engine as an "optional accelerator" it never
@@ -35,7 +35,7 @@ in `CONTRACT.md §4`.
 |---|---|---|---|
 | **Guideline** | `CONTRACT.md` | Orchestration contract: launch model, sandbox truths, the standard agent brief, tool-awareness rule, adaptive scale, adversarial-verify, the canonical output schemas | ✅ portable, identical everywhere |
 | **Workflows** | `workflows/{spec,execute,review}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
-| **Adjustment** | `commands/workflow-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** the scripts read | ✅ per-repo |
+| **Adjustment** | `commands/ensemble-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** the scripts read | ✅ per-repo |
 | **Entry points** | `commands/{spec,execute,review}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
 
 Ephemeral (gitignored): `.workflows/recon.md`, `.workflows/{spec,review}-<slug>.md`,
@@ -74,7 +74,7 @@ Always launch a workflow; scale fan-out to diff size and the user's token target
 ## Mandatory requirements — how "change the workflow per repo" actually works (resolved)
 
 Mechanism = **portable script + generated profile** (not bespoke scripts per repo).
-The `.js` is identical everywhere; `/workflow-install` **asks the user, right at
+The `.js` is identical everywhere; `/ensemble-install` **asks the user, right at
 install,** what this repo treats as non-negotiable and writes it into
 `repo-profile.md` as `{ requirement, appliesWhen, requiredEvidence }`. The script
 reads `args.mandatoryRequirements` and enforces it. So the workflow's *behavior* is
@@ -99,7 +99,7 @@ Enforcement is a **verification loop, not a one-shot block**:
 - [x] `workflows/review.js` — reference native workflow
 - [x] `commands/review.md` — thin launcher
 - [x] `templates/repo-profile.template.md` — machine-read fields (agentType, tools)
-- [x] `commands/workflow-install.md` — copy `workflows/*`, emit machine-read profile
+- [x] `commands/ensemble-install.md` — copy `workflows/*`, emit machine-read profile
 - [x] **SIGN-OFF GATE cleared** — user approved the `/review` pattern + the
       mandatory-requirements refinement, then said "build spec/execute, then validate"
 - [x] `workflows/spec.js` + `commands/spec.md`

@@ -10,8 +10,8 @@ The fact that this command instructs you to call `Workflow` is what authorizes i
 opt-in; launch it without asking for further permission.
 
 ## 1 — Load the rules & profile
-1. Read `.claude/workflow-kit/CONTRACT.md` and obey it for the whole run.
-2. If `.claude/workflow-kit/repo-profile.md` exists, read it as ground truth and parse:
+1. Read `.claude/ensemble/CONTRACT.md` and obey it for the whole run.
+2. If `.claude/ensemble/repo-profile.md` exists, read it as ground truth and parse:
    - `commands` — `{build, typecheck, lint, test, testScoped}`.
    - `roster` — `[{name, agentType, whenToSpawn, scope, ownsChecks}]`.
    - `invariants` — `[{name, blastRadius, gateTest}]`.

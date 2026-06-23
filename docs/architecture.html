@@ -1,4 +1,4 @@
-<title>Workflow Kit — Architecture</title>
+<title>Ensemble — Architecture</title>
 <style>
   :root{
     --paper:#faf8f3; --paper-2:#f1eee5; --paper-3:#e6e2d6;
@@ -142,7 +142,7 @@
       <div class="layer l3">
         <span class="tag">Layer 3 · Adjustment · Per-repo · generated at install</span>
         <h3>Repo profile &amp; mandatory requirements</h3>
-        <p><code>repo-profile.md</code> is the specialization layer written by <code>/workflow-install</code>. It pins the roster, canonical commands, invariants → gate tests, agent types, and the repo tools agents must use. Critically, it captures <em>mandatory requirements</em> — install-time gates like "any UI change must produce a browser screenshot" — that the scripts read as <code>args.mandatoryRequirements</code> and enforce via a verification loop.</p>
+        <p><code>repo-profile.md</code> is the specialization layer written by <code>/ensemble-install</code>. It pins the roster, canonical commands, invariants → gate tests, agent types, and the repo tools agents must use. Critically, it captures <em>mandatory requirements</em> — install-time gates like "any UI change must produce a browser screenshot" — that the scripts read as <code>args.mandatoryRequirements</code> and enforce via a verification loop.</p>
         <div class="chips"><span class="chip repo">repo-profile.md</span><span class="chip repo">roster + agent types</span><span class="chip repo">mandatory requirements</span><span class="chip repo">invariant gate tests</span><span class="chip repo">repo tools / MCPs</span></div>
       </div>
       <div class="layer l4">
@@ -256,7 +256,7 @@
 
   <section>
     <h2><span class="n">05</span>Install &amp; retrofit</h2>
-    <p class="sub"><code>/workflow-install</code> drops the portable layer into a repo, runs detection, and interviews the user so the scripts know this repo's commands, harnesses, tools — and its non-negotiables.</p>
+    <p class="sub"><code>/ensemble-install</code> drops the portable layer into a repo, runs detection, and interviews the user so the scripts know this repo's commands, harnesses, tools — and its non-negotiables.</p>
     <div class="install">
       <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable layer: <code>CONTRACT.md</code> + the three command launchers + <code>workflows/{spec,execute,review}.js</code> into <code>.claude/</code>.</p></div>
       <div class="istep"><div class="num">02</div><h4>Gitignore</h4><p>Add <code>.workflows/</code> so scratch space and run artifacts stay uncommitted.</p></div>
@@ -269,9 +269,9 @@
   <section>
     <h2><span class="n">06</span>On disk</h2>
     <p class="sub">The committed footprint stays small. The portable layer (contract + scripts + launchers) is identical everywhere; the per-repo profile is the only customisation. Scratch stays gitignored.</p>
-    <pre class="tree"><span class="c">portable source — copy to any machine / kit repo</span>
+    <pre class="tree"><span class="c">portable source — the Ensemble repo (clone anywhere)</span>
 ~/.claude/
-  workflow-kit/
+  ensemble/
     <span class="a">CONTRACT.md</span>              <span class="c"># shared rules, schemas, standard brief</span>
     workflows/               <span class="c"># native workflow scripts</span>
       <span class="a">spec.js</span>                <span class="c"># Workflow({name:"spec", args:{...}})</span>
@@ -279,16 +279,17 @@
       <span class="a">review.js</span>              <span class="c"># Workflow({name:"review", args:{...}})</span>
     templates/               <span class="c"># repo-profile template</span>
   commands/
-    <span class="a">workflow-install.md</span>      <span class="c"># /workflow-install (global)</span>
+    <span class="a">ensemble-install.md</span>      <span class="c"># /ensemble-install (global)</span>
 
-<span class="c">per-repo after /workflow-install — committed, shared with team</span>
+<span class="c">per-repo after /ensemble-install — committed, shared with team</span>
 &lt;repo&gt;/.claude/
-  <span class="a">CONTRACT.md</span>                <span class="c"># portable — copied verbatim</span>
+  ensemble/
+    <span class="a">CONTRACT.md</span>              <span class="c"># portable — copied verbatim</span>
+    <span class="g">repo-profile.md</span>          <span class="c"># repo-specific — roster, mandatory requirements, tools</span>
   workflows/                 <span class="c"># scripts the Workflow tool resolves by name</span>
     <span class="a">spec.js  execute.js  review.js</span>
   commands/
     <span class="a">spec.md  execute.md  review.md</span>   <span class="c"># thin launchers</span>
-  <span class="g">repo-profile.md</span>            <span class="c"># repo-specific — roster, mandatory requirements, tools</span>
 
 <span class="c">gitignored scratch — handoff &amp; cache</span>
 &lt;repo&gt;/.workflows/
@@ -296,5 +297,5 @@
     <span class="i">spec-*.md  review-*.md</span>   <span class="c"># cross-session handoff artifacts</span></pre>
   </section>
 
-  <footer>Workflow Kit · Native Workflow engine · /spec → /execute → /review · evidence over narrative</footer>
+  <footer>Ensemble · Native Workflow engine · /spec → /execute → /review · evidence over narrative</footer>
 </div>

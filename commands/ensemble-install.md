@@ -1,13 +1,13 @@
 ---
-description: Install the Spec/Execute/Review workflow kit into the current repo and retrofit it to the repo's real stack, tests, services, and conventions
+description: Install Ensemble — the Spec/Execute/Review workflows — into the current repo and retrofit them to its real stack, tests, services, and conventions
 ---
 
-Install the portable workflow kit into the **current repo** and specialize it so
-the `/spec`, `/execute`, and `/review` workflows are tuned to *this* repo.
+Install **Ensemble** — the portable `/spec`, `/execute`, `/review` workflows — into
+the **current repo** and specialize them to *this* repo.
 
-Source of truth for the kit: the **workflow-kit repo** (default
-`~/work/mytra/workflow-kit/`; i.e. the directory that contains this command's
-sibling `commands/` and `templates/`). Referred to below as `<KIT>`.
+Source of truth: the **Ensemble source repo** (wherever you cloned it — e.g.
+`~/work/mytra/workflow-kit/`; the directory that contains this command's sibling
+`commands/`, `workflows/`, and `templates/`). Referred to below as `<KIT>`.
 
 Do this:
 
@@ -18,7 +18,7 @@ exists, treat this as an update: diff against the kit and ask before overwriting
 human-edited files (never clobber a customized `repo-profile.md`).
 
 **2 — Copy the portable layer.** Into `<repo>/.claude/`:
-   - `workflow-kit/CONTRACT.md`  ← from `<KIT>/CONTRACT.md`
+   - `ensemble/CONTRACT.md`      ← from `<KIT>/CONTRACT.md`
    - `commands/spec.md`          ← from `<KIT>/commands/spec.md`
    - `commands/execute.md`       ← from `<KIT>/commands/execute.md`
    - `commands/review.md`        ← from `<KIT>/commands/review.md`
@@ -98,7 +98,7 @@ values as the default option:
      {effort, model}}` (CONTRACT §4.9). Defaults are fine for most repos — don't ask
      without a signal, and prefer `effort` over pinning a `model`.
 
-**6 — Write the profile.** Populate `<repo>/.claude/workflow-kit/repo-profile.md`
+**6 — Write the profile.** Populate `<repo>/.claude/ensemble/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected
 + confirmed values. The **Repo character**, **Invariants & gate tests**,
 **Mandatory requirements**, **Specialist roster**, and **Execution mode** sections
@@ -108,7 +108,7 @@ Mark anything still unverified with `~`. This file is committed and human-mainta
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an
 open question. Tell the user they can now run `/spec`, `/execute`, `/review` in
-this repo, and that re-running `/workflow-install` updates the portable layer
+this repo, and that re-running `/ensemble-install` updates the portable layer
 without touching `repo-profile.md`.
 
 Optional argument (target repo path, if not the current directory): $ARGUMENTS

@@ -1,4 +1,4 @@
-# Workflow Kit — Shared Contract
+# Ensemble — Shared Contract
 
 The portable operating rules and output format shared by `/spec`, `/execute`, and
 `/review`. **Read this once at the start of any workflow, then obey it for the whole
@@ -35,7 +35,7 @@ These workflows are **centered on Claude's native Workflow tool**. The pieces:
   it. Human-facing text lives in the main agent; data lives in the workflow.
 
 The four layers (see `PLAN.md`): **Guideline** (this file) · **Workflows**
-(`workflows/*.js`) · **Adjustment** (`workflow-install` → `repo-profile.md`) ·
+(`workflows/*.js`) · **Adjustment** (`ensemble-install` → `repo-profile.md`) ·
 **Entry points** (the commands). The first two are portable and identical
 everywhere; the third is per-repo.
 

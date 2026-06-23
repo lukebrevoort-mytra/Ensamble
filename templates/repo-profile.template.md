@@ -1,7 +1,7 @@
 # Repo Profile — <REPO NAME>
 
 > Repo-specific ground truth for the Spec / Execution / Review workflows.
-> Written by `/workflow-install`'s retrofit (detection + a short interview) and
+> Written by `/ensemble-install`'s retrofit (detection + a short interview) and
 > maintained by humans. The workflows read this **before** doing anything and
 > treat confirmed entries as FACTs. This is the layer that makes the generic
 > workflows *specific* to this repo. Keep it current; it's the highest-value file.
@@ -23,7 +23,7 @@ change in their blast radius, and `/review` weights them by default.
 
 ## Mandatory requirements — the user's install-time gates
 What this repo treats as **non-negotiable** for a change, decided by the user during
-`/workflow-install` and enforced as hard gates by the workflows (CONTRACT §4.8). Not
+`/ensemble-install` and enforced as hard gates by the workflows (CONTRACT §4.8). Not
 "properties that never regress" (those are invariants above) but **process/evidence
 requirements**: a cycle that must run, a tool that must be used, an artifact that
 must be produced. **Machine-read by the scripts — keep the three fields exact.**

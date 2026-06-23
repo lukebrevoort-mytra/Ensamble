@@ -10,8 +10,8 @@ This command instructing you to call `Workflow` is its opt-in — launch without
 re-asking permission, but DO ask the intake/adjudication questions below.
 
 ## 1 — Load the rules & profile
-Read `.claude/workflow-kit/CONTRACT.md` (obey it all run). If
-`.claude/workflow-kit/repo-profile.md` exists, read it as ground truth and parse:
+Read `.claude/ensemble/CONTRACT.md` (obey it all run). If
+`.claude/ensemble/repo-profile.md` exists, read it as ground truth and parse:
 `roster`, `invariants`, `tools`, `commands`, `mandatoryRequirements`, `phasePolicy`
 (see CONTRACT §4). Missing profile → empty values + flag the gap.
 
