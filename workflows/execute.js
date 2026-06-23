@@ -11,16 +11,19 @@ export const meta = {
 
 // Repo context arrives via args (the sandbox can't read the repo — CONTRACT §4.2).
 // The agents this script spawns DO have full Bash/Read/Write/MCP and do the work.
-const profile    = (args && args.profile)    || ''
-const recon      = (args && args.recon)       || ''
-const spec       = (args && args.spec)        || ''   // resolved spec text, passed by /execute
-const commands   = (args && args.commands)    || {}
-const roster     = (args && args.roster)      || []
-const invariants = (args && args.invariants)  || []
-const repoTools  = (args && args.tools)       || []
-const mandatory  = (args && args.mandatoryRequirements) || []  // [{requirement, appliesWhen, requiredEvidence}]
-const scaleArg   = (args && args.scale)       || 'auto'
-const agentTypes = (args && args.agentTypes)  || {}
+// The Workflow tool delivers `args` as a JSON STRING (verified) — parse it so the
+// script works whether args is a string or an already-parsed object.
+const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
+const profile    = (A && A.profile)    || ''
+const recon      = (A && A.recon)       || ''
+const spec       = (A && A.spec)        || ''   // resolved spec text, passed by /execute
+const commands   = (A && A.commands)    || {}
+const roster     = (A && A.roster)      || []
+const invariants = (A && A.invariants)  || []
+const repoTools  = (A && A.tools)       || []
+const mandatory  = (A && A.mandatoryRequirements) || []  // [{requirement, appliesWhen, requiredEvidence}]
+const scaleArg   = (A && A.scale)       || 'auto'
+const agentTypes = (A && A.agentTypes)  || {}
 const coderType    = agentTypes.coder    || 'general-purpose'
 const verifierType = agentTypes.verifier || 'general-purpose'  // 'verifier' if the repo has it
 
@@ -28,6 +31,23 @@ const scale = scaleArg
 const MAX_ROUNDS = scale === 'quick' ? 2 : scale === 'thorough' ? 4 : 3
 // Implementation is expensive — keep a larger reserve so the final checks always run.
 const budgetOk = () => !budget.total || budget.remaining() > 60_000
+
+// Per-phase compute (CONTRACT §4.9) — effort-first tiering. Planning and adversarial
+// verification run hot; running checks is mechanical. `phasePolicy` from the repo
+// profile overrides per phase and may pin a model (never defaulted — absent →
+// inherit the session model).
+const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
+const DEFAULT_TIER = { plan: { effort: 'high' }, implement: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+function compute(phaseName) {
+  const k = phaseName.toLowerCase()
+  const pol = phasePolicy[k] || {}
+  const def = DEFAULT_TIER[k] || {}
+  const out = {}
+  const effort = pol.effort || def.effort        // effort-first: relative, survives model swaps
+  if (effort) out.effort = effort
+  if (pol.model) out.model = pol.model           // model only when the profile pins it
+  return out
+}
 
 function mandatoryLine() {
   return mandatory.length
@@ -110,7 +130,7 @@ const plan = await agent(
     question: `Decompose this spec into small, independently verifiable tasks, sequenced by dependency. For each: a stable id, what to do, the acceptance criterion it satisfies, whether a real test path exists (hasTestPath), and the files it touches. Spec:\n"""${spec}"""`,
     evidence: 'Tasks must each map to a concrete, checkable criterion.',
   }),
-  { schema: TASK_LEDGER_SCHEMA, phase: 'Plan', label: 'decompose' }
+  { schema: TASK_LEDGER_SCHEMA, phase: 'Plan', label: 'decompose', ...compute('Plan') }
 )
 if (!plan || !(plan.tasks || []).length) return { error: 'Could not decompose the spec into tasks.' }
 
@@ -148,7 +168,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
         ].filter(Boolean).join('\n'),
         evidence: 'Report the actual files changed and the command output proving it works.',
       }),
-      { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}` }
+      { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}`, ...compute('Implement') }
     )
     ledger[t.id].impl = impl
     if (impl && impl.blocked) { ledger[t.id].status = 'blocked'; ledger[t.id].blocker = impl.blockerReason || 'blocked by implementer' }
@@ -171,7 +191,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
         evidence: 'Cite the command output or file:line you checked.',
         schemaNote: 'Return the verdict object; `missing`/`feedback` must be specific enough to act on.',
       }),
-      { schema: TASK_VERDICT_SCHEMA, phase: 'Verify', agentType: verifierType, label: `verify:${t.id} r${round}` }
+      { schema: TASK_VERDICT_SCHEMA, phase: 'Verify', agentType: verifierType, label: `verify:${t.id} r${round}`, ...compute('Verify') }
     )
   ))
 
@@ -205,7 +225,7 @@ async function runChecks() {
       question: `Run the repo's canonical checks against the implemented change and report real output. Canonical commands:\n${cmdList}\nAlso run any invariant gate test whose blast radius this change touches: ${invariants.map(i => `${i.name}: ${i.gateTest}`).join(' | ') || 'none defined'}. Mark anything you cannot run (no creds/env) as blocked with why.`,
       evidence: 'Paste the key passing/failing line for each command.',
     }),
-    { schema: CHECKS_SCHEMA, phase: 'Checks', label: 'final-checks' }
+    { schema: CHECKS_SCHEMA, phase: 'Checks', label: 'final-checks', ...compute('Checks') }
   ) || { checks: [], invariantGates: [] }
 }
 
@@ -219,7 +239,7 @@ async function checkRequirements() {
       question: `For EACH mandatory requirement: decide if it applies to this change (appliesWhen), then verify its required evidence was actually produced — inspect the working tree/branch for it (screenshots, eval/sim output, cycle logs); produce it yourself with the repo's tools if you can. Requirements:\n${mandatory.map(m => `- ${m.requirement} — applies when: ${m.appliesWhen} — required evidence: ${m.requiredEvidence}`).join('\n')}\nMark each satisfied / unmet / blocked / n/a with concrete evidence or why it's missing.`,
       evidence: 'A requirement is satisfied ONLY if you can point to concrete evidence.',
     }),
-    { schema: REQUIREMENTS_SCHEMA, phase: 'Checks', label: 'requirements-gate' }
+    { schema: REQUIREMENTS_SCHEMA, phase: 'Checks', label: 'requirements-gate', ...compute('Checks') }
   ) || { requirements: [] }
 }
 

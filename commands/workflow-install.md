@@ -91,6 +91,12 @@ values as the default option:
      hard gates (CONTRACT §4.8). Surface your best guesses from 4b and let the user
      confirm, edit, or add — this is the step that "changes the workflow to fit the
      repo."
+   - **Phase compute policy** (optional, effort-first) — only if this repo has a
+     clear reason to retune compute per phase: a huge codebase where broad `gather`
+     should be cheap (`effort: low`), or a safety-critical repo where `verify` must
+     run at high effort or a stronger model. Capture as `phasePolicy: {phase:
+     {effort, model}}` (CONTRACT §4.9). Defaults are fine for most repos — don't ask
+     without a signal, and prefer `effort` over pinning a `model`.
 
 **6 — Write the profile.** Populate `<repo>/.claude/workflow-kit/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected

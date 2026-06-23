@@ -19,6 +19,8 @@ opt-in; launch it without asking for further permission.
    - `tools` — tool/MCP/service ids reviewers should use for evidence.
    - `agentTypes` — `{explorer, coder, verifier}` mapped to real agents available
      here (default `explorer: "Explore"`, the rest `general-purpose`).
+   - `phasePolicy` — `{phase: {effort, model}}` from **Phase compute policy** (optional;
+     omit to use the script's built-in effort defaults — CONTRACT §4.9).
    If the profile is missing, proceed with empty values and flag the gap as a QUESTION.
 
 ## 2 — Ensure recon
@@ -37,7 +39,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, scale, slug }
+{ profile, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, slug }
 ```
 Let the script own scoping, the parallel explorers, the draft, and the critique.
 

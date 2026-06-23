@@ -20,6 +20,8 @@ opt-in; launch it without asking for further permission.
    - `tools` — tool/MCP/service ids the implementer/verifier should use.
    - `agentTypes` — `{coder, verifier}` mapped to real agents here (default both
      `general-purpose`; use `verifier` for the verifier if this repo has it).
+   - `phasePolicy` — `{phase: {effort, model}}` from **Phase compute policy** (optional;
+     omit to use the script's built-in effort defaults — CONTRACT §4.9).
    If the profile is missing, proceed with empty values and flag the gap.
 
 ## 2 — Ensure recon
@@ -42,7 +44,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, spec, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, scale, slug, branch }
+{ profile, recon, spec, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, slug, branch }
 ```
 Let the script own decomposition and the implement→verify→loop-back cycle. It loops
 until every acceptance criterion is met **and** the repo's mandatory evidence is

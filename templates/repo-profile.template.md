@@ -101,6 +101,19 @@ the loop and the acceptance signal so `/execute` adopts it.
 - **Inner loop:** <the per-change verify cycle for this repo>
 - **Tooling/harness to drive it:** <sim runner, eval harness, browser, fixtures>
 
+## Phase compute policy (optional — effort-first)
+Per-phase compute tiers the workflows apply to their agents (CONTRACT §4.9). **Omit
+this whole section to use the built-in defaults** (mechanical phases low, hard-
+reasoning phases high, model = the session model). Set `effort` to retune a phase;
+pin `model` **only** when this repo genuinely needs a specific tier for a phase
+(otherwise it's inherited — pinning model names is brittle). Phases by workflow:
+`spec` → scope · gather · draft · critique; `execute` → plan · implement · verify ·
+checks; `review` → triage · review · verify · checks. Machine-read as
+`phasePolicy: {phase: {effort, model}}` — keep the field names exact.
+- **<phase>** — `effort:` <low|medium|high|xhigh|max> — `model:` <optional: haiku|sonnet|opus|fable>
+  - e.g. **gather** — effort: low   (huge codebase; broad sweeps should stay cheap)
+  - e.g. **verify** — effort: high — model: opus   (safety-critical; never under-verify)
+
 ## Notes for each workflow (optional overrides)
 - **Spec:** <repo-specific things specs here must always address>
 - **Execution:** <e.g. always run X before declaring done>

@@ -23,6 +23,8 @@ opt-in; launch it without asking the user for further permission.
      commands**.
    - `mandatoryRequirements` — array of `{requirement, appliesWhen, requiredEvidence}`
      from **Mandatory requirements** — this repo's install-time hard gates.
+   - `phasePolicy` — `{phase: {effort, model}}` from **Phase compute policy** (optional;
+     omit to use the script's built-in effort defaults — CONTRACT §4.9).
    If the profile is missing, proceed with empty arrays and flag the gap as a
    QUESTION — the workflow still runs with generic lenses.
 
@@ -51,7 +53,7 @@ script by path if this repo hasn't installed it yet:
 
 with `args` =
 ```
-{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, scale, slug }
+{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, scale, slug }
 ```
 Do not duplicate the orchestration here — the script owns triage, the specialist
 fan-out, adversarial verification, and check-running. Let it run.

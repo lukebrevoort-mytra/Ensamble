@@ -10,21 +10,40 @@ export const meta = {
 }
 
 // Repo context arrives via args (the sandbox can't read the repo — CONTRACT §4.2).
-const profile    = (args && args.profile)    || ''
-const recon      = (args && args.recon)       || ''
-const request    = (args && args.request)     || ''
-const commands   = (args && args.commands)    || {}
-const roster     = (args && args.roster)      || []
-const invariants = (args && args.invariants)  || []
-const repoTools  = (args && args.tools)       || []
-const mandatory  = (args && args.mandatoryRequirements) || []
-const scaleArg   = (args && args.scale)       || 'auto'
-const agentTypes = (args && args.agentTypes)  || {}
+// The Workflow tool delivers `args` as a JSON STRING (verified) — parse it so the
+// script works whether args is a string or an already-parsed object.
+const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
+const profile    = (A && A.profile)    || ''
+const recon      = (A && A.recon)       || ''
+const request    = (A && A.request)     || ''
+const commands   = (A && A.commands)    || {}
+const roster     = (A && A.roster)      || []
+const invariants = (A && A.invariants)  || []
+const repoTools  = (A && A.tools)       || []
+const mandatory  = (A && A.mandatoryRequirements) || []
+const scaleArg   = (A && A.scale)       || 'auto'
+const agentTypes = (A && A.agentTypes)  || {}
 const explorer   = agentTypes.explorer || 'Explore'
 
 const scale = scaleArg
 const AREA_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 8 : 4
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
+
+// Per-phase compute (CONTRACT §4.9) — effort-first tiering. Broad exploration is
+// cheap; synthesis/critique is expensive. `phasePolicy` from the repo profile
+// overrides per phase and may pin a model (never defaulted — absent → session model).
+const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
+const DEFAULT_TIER = { scope: { effort: 'low' }, gather: { effort: 'medium' }, draft: { effort: 'high' }, critique: { effort: 'high' } }
+function compute(phaseName) {
+  const k = phaseName.toLowerCase()
+  const pol = phasePolicy[k] || {}
+  const def = DEFAULT_TIER[k] || {}
+  const out = {}
+  const effort = pol.effort || def.effort        // effort-first: relative, survives model swaps
+  if (effort) out.effort = effort
+  if (pol.model) out.model = pol.model           // model only when the profile pins it
+  return out
+}
 
 // Standard brief (CONTRACT §4.3) — no naked subagents: each orients on repo context,
 // finds patterns to mirror, and knows the repo's tools.
@@ -95,6 +114,10 @@ const CRITIQUE_SCHEMA = {
   },
 }
 
+// Fail fast on an empty/whitespace-only request — before spending any agent
+// (mirrors execute.js's `if (!spec)` guard). Found by /spec reviewing itself.
+if (!request.trim()) return { error: 'No request provided — /spec needs an idea, ticket, or description of the change to spec.' }
+
 log(`Speccing: ${request.slice(0, 80)}${request.length > 80 ? '…' : ''} (scale=${scale})`)
 
 // ── Phase 1: Scope — where does this request live, what should it mirror? ─────
@@ -106,7 +129,7 @@ const scoped = await agent(
     question: `For this request, identify the repo areas/subsystems it touches, 2–3 existing patterns to mirror (file:line), and the unknowns a spec must resolve. Request:\n"""${request}"""`,
     evidence: 'Name real paths you confirmed exist.',
   }),
-  { schema: SCOPE_SCHEMA, phase: 'Scope', label: 'scope' }
+  { schema: SCOPE_SCHEMA, phase: 'Scope', label: 'scope', ...compute('Scope') }
 )
 if (!scoped) return { error: 'Could not scope the request — re-run /spec with more detail.' }
 
@@ -124,7 +147,7 @@ const contexts = (await parallel(areas.map(a => () =>
       question: `Map how "${a.name}" works today and what this request would touch here. Return concrete file:line findings, the patterns to mirror, and gotchas. Why relevant: ${a.whyRelevant || '(request target)'}.`,
       evidence: 'Every finding needs a file:line.',
     }),
-    { schema: CONTEXT_SCHEMA, phase: 'Gather', agentType: explorer, label: `explore:${a.name}` }
+    { schema: CONTEXT_SCHEMA, phase: 'Gather', agentType: explorer, label: `explore:${a.name}`, ...compute('Gather') }
   )
 ))).filter(Boolean)
 
@@ -137,7 +160,7 @@ const spec = await agent(
     question: `Using the gathered context below, write an implementation-ready spec for the request. Every acceptance criterion must be concrete and testable (a command or observable behavior). Flag which invariants [${invariants.map(i => i.name).join(', ') || 'none'}] and mandatory requirements [${mandatory.map(m => m.requirement).join(', ') || 'none'}] this change touches — those become non-negotiable downstream gates. Anchor the approach to existing patterns by file:line.\n\nGathered context:\n${JSON.stringify(contexts).slice(0, 6000)}\n\nRequest:\n"""${request}"""`,
     evidence: 'Tie acceptance criteria to how each is verified.',
   }),
-  { schema: SPEC_SCHEMA, phase: 'Draft', label: 'draft-spec' }
+  { schema: SPEC_SCHEMA, phase: 'Draft', label: 'draft-spec', ...compute('Draft') }
 )
 if (!spec) return { error: 'Could not draft the spec from the gathered context.' }
 
@@ -152,7 +175,7 @@ if (budgetOk()) {
       question: `Adversarially critique this spec: untestable criteria, missing edge cases, hidden coupling, contradictions, and any invariant/mandatory-requirement it fails to address. Be specific about the smallest fix for each gap.\n\nSpec:\n${JSON.stringify(spec).slice(0, 6000)}`,
       evidence: 'Each gap: what is missing and the smallest fix.',
     }),
-    { schema: CRITIQUE_SCHEMA, phase: 'Critique', label: 'critique' }
+    { schema: CRITIQUE_SCHEMA, phase: 'Critique', label: 'critique', ...compute('Critique') }
   )
 }
 

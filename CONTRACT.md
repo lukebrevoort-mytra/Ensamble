@@ -215,6 +215,30 @@ better than to declare done without the evidence:
 
 "Mandatory" means mandatory: the workflow never papers over a missing requirement.
 
+### 4.9 Per-phase compute — effort-first model/effort tiering
+
+Not every phase needs the same horsepower: a broad exploration sweep is cheap; an
+adversarial verification or a synthesis pass is expensive. Each script sets a
+per-phase **compute tier** on its `agent()` calls, with two dials:
+
+- **`effort`** (`low`/`medium`/`high`/`xhigh`/`max`) — the **primary, portable**
+  lever. It is *relative* to whatever model is running, so it survives model swaps
+  and respects the session model the user chose. Built-in defaults drop mechanical
+  phases (running checks) to `low` and raise hard-reasoning phases (triage, verify,
+  critique, plan) to `high`.
+- **`model`** (`haiku`/`sonnet`/`opus`/`fable`) — an **optional override**, pinned
+  **only** by the repo profile and **only** when a repo genuinely warrants it (e.g. a
+  safety-critical repo forcing `verify` stronger). Never defaulted: absent → inherit
+  the session model (per the Workflow tool's own guidance — pinning model names is
+  brittle, so prefer effort).
+
+The profile may carry a **`phasePolicy`** — `{ phase: {effort, model} }` — decided at
+install; the command passes it as `args.phasePolicy` and each script merges it over
+its built-in defaults via a small `compute(phase)` helper. Absent policy → defaults →
+session model. This is one more axis of tuning the workflow to the repo: a giant
+monorepo can make broad `gather` cheaper; a sim-heavy repo can make `verify` stronger
+— without editing a script.
+
 ---
 
 ## 5. Dynamic readjustment — revise when reality diverges

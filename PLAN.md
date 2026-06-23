@@ -108,6 +108,28 @@ Enforcement is a **verification loop, not a one-shot block**:
       (run `wf_fd99a799-7e2`) — engine + schemas + pipeline confirmed working; it
       caught a real install-copy-list bug (now fixed) and two stale-doc nits (fixed)
 
+## Validation & hardening (live runs through the real engine)
+
+- `/review` (run `wf_fd99a799`) — engine + schemas + fan-out/verify pipeline confirmed;
+  caught a real install bug + stale docs (fixed).
+- `/spec` (run `wf_2248fef0`) — all four phases; produced a sharp, anchored spec.
+- `/execute` (run `wf_597e1916`) — implement→verify loop on that spec; also exercises
+  the per-phase compute feature via an explicit `phasePolicy`.
+
+Bugs the validation surfaced and fixed:
+- **CRITICAL — `args` arrives as a JSON string, not an object.** The Workflow tool
+  delivers `args` stringified (verified by a zero-agent probe: `typeof args ==="string"`),
+  so `args.x` was `undefined` and every field silently defaulted — every installed
+  workflow would have run on defaults. Fixed: each script normalizes
+  `const A = typeof args === 'string' ? JSON.parse(args) : (args || {})` and reads `A.x`.
+- **`spec.js` lacked an empty-request guard** (found by `/spec` reviewing itself) —
+  added a fail-fast `if (!request.trim()) return {error}` mirroring `execute.js`.
+
+Feature added — **per-phase compute, effort-first** (CONTRACT §4.9): `compute(phase)`
+in each script sets `effort` (and an optional profile-pinned `model`) per `agent()`
+call; `phasePolicy` in the profile overrides the built-in tier defaults. Effort is
+the primary lever (portable, relative); model is pinned only when a repo warrants it.
+
 ## Open questions
 
 - **RESOLVED** — mechanism = portable script + generated profile (Q1); enforcement =

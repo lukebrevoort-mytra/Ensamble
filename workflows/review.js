@@ -14,18 +14,22 @@ export const meta = {
 // filesystem or run git (CONTRACT §4.2), so the /review command gathers all
 // static repo knowledge and passes it in. The agents we spawn are NOT sandboxed
 // — they read files, run `git diff`, run tests, and call MCP tools themselves.
+//
+// NOTE: the Workflow tool delivers `args` as a JSON STRING (verified), so parse it.
+// The script must work whether args arrives as a string or an already-parsed object.
 // ─────────────────────────────────────────────────────────────────────────────
-const profile      = (args && args.profile)      || ''            // full repo-profile.md text ('' if none)
-const recon        = (args && args.recon)         || ''            // cached .workflows/recon.md text/summary
-const target       = (args && args.target)        || 'current branch'
-const base         = (args && args.base)          || ''            // merge-base ref, resolved by the command
-const changedFiles = (args && args.changedFiles)  || []            // file paths in the diff
-const commands     = (args && args.commands)      || {}            // {build,typecheck,lint,test,testScoped}
-const roster       = (args && args.roster)        || []            // [{name,agentType,whenToSpawn,scope,ownsChecks}]
-const invariants   = (args && args.invariants)    || []            // [{name,blastRadius,gateTest}]
-const repoTools    = (args && args.tools)         || []            // tool/MCP ids agents should ToolSearch + use
-const scaleArg     = (args && args.scale)         || 'auto'        // 'quick' | 'auto' | 'thorough'
-const mandatory    = (args && args.mandatoryRequirements) || []    // [{requirement, appliesWhen, requiredEvidence}] — decided at install
+const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
+const profile      = (A && A.profile)      || ''            // full repo-profile.md text ('' if none)
+const recon        = (A && A.recon)         || ''            // cached .workflows/recon.md text/summary
+const target       = (A && A.target)        || 'current branch'
+const base         = (A && A.base)          || ''            // merge-base ref, resolved by the command
+const changedFiles = (A && A.changedFiles)  || []            // file paths in the diff
+const commands     = (A && A.commands)      || {}            // {build,typecheck,lint,test,testScoped}
+const roster       = (A && A.roster)        || []            // [{name,agentType,whenToSpawn,scope,ownsChecks}]
+const invariants   = (A && A.invariants)    || []            // [{name,blastRadius,gateTest}]
+const repoTools    = (A && A.tools)         || []            // tool/MCP ids agents should ToolSearch + use
+const scaleArg     = (A && A.scale)         || 'auto'        // 'quick' | 'auto' | 'thorough'
+const mandatory    = (A && A.mandatoryRequirements) || []    // [{requirement, appliesWhen, requiredEvidence}] — decided at install
 
 // Adaptive scale (CONTRACT §4.6): lean crew for small diffs, full panel for big
 // ones, and a token target — if the user set one — is a hard ceiling.
@@ -36,6 +40,24 @@ const scale = scaleArg === 'auto' ? sizeScale : scaleArg
 const VERIFY_VOTES = scale === 'thorough' ? 3 : 1                  // perspective-diverse panel when thorough
 const LENS_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 12 : 6
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
+
+// Per-phase compute (CONTRACT §4.9) — effort-first tiering. The built-in defaults
+// drop mechanical phases (checks) to low and raise hard-reasoning phases (triage,
+// verify) to high; `phasePolicy` from the repo profile overrides per phase, and may
+// pin a model only when the repo genuinely warrants it (model is never defaulted —
+// absent → inherit the session model).
+const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
+const DEFAULT_TIER = { triage: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+function compute(phaseName) {
+  const k = phaseName.toLowerCase()
+  const pol = phasePolicy[k] || {}
+  const def = DEFAULT_TIER[k] || {}
+  const out = {}
+  const effort = pol.effort || def.effort        // effort-first: relative, survives model swaps
+  if (effort) out.effort = effort
+  if (pol.model) out.model = pol.model           // model only when the profile pins it
+  return out
+}
 
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
 // subagent is "naked": each re-orients on repo context and knows its tools. This
@@ -136,7 +158,7 @@ const risk = await agent(
     question: `Map this change: which subsystems it touches; which risk lenses are present (security, data-migration, concurrency, api-contract, performance, ui, build-release, correctness); which of these repo invariants fall in its blast radius [${invariants.map(i => i.name).join(', ') || 'none defined'}]; and which of these repo roster roles should review it [${roster.map(r => r.name).join(', ') || 'none defined'}]. Resolve the diff with the repo's VCS yourself (target: ${target}, base: ${base || 'merge-base with default branch'}).`,
     evidence: 'Base every lens on a concrete hunk you actually saw.',
   }),
-  { schema: RISK_MAP_SCHEMA, phase: 'Triage', label: 'risk-map' }
+  { schema: RISK_MAP_SCHEMA, phase: 'Triage', label: 'risk-map', ...compute('Triage') }
 )
 if (!risk) return { error: 'Triage failed — could not map the diff. Re-run /review or confirm the target resolves to a real diff.' }
 
@@ -174,7 +196,7 @@ async function verifyFindings(found, job) {
           question: `Try to REFUTE this claimed finding: "${f.title}" at ${f.file}:${f.line == null ? '?' : f.line} — ${f.why}. Read the code and the diff yourself. Default to refuted=true if you cannot independently confirm it is a real problem in this repo's context.`,
           evidence: 'Confirm or refute from the actual code, not plausibility.',
         }),
-        { schema: VERDICT_SCHEMA, phase: 'Verify', label: `verify:${f.file}` }
+        { schema: VERDICT_SCHEMA, phase: 'Verify', label: `verify:${f.file}`, ...compute('Verify') }
       )
     )).then(votes => {
       const live = votes.filter(Boolean)
@@ -197,7 +219,7 @@ async function runChecks() {
       question: `Run the repo's canonical checks against the changed surface and report real output (prefer scoped/fast forms). Canonical commands:\n${cmdList}\n${gates.length ? 'MANDATORY invariant gate tests (their blast radius is touched — a passing gate is the strongest evidence the invariant held):\n' + gates.map(g => `- ${g.name}: ${g.gateTest}`).join('\n') : 'No invariant gates in blast radius.'}\nFor anything you cannot run (no creds/env), mark it blocked and say why.`,
       evidence: 'Paste the key passing/failing line for each command.',
     }),
-    { schema: CHECKS_SCHEMA, phase: 'Checks', label: 'checks' }
+    { schema: CHECKS_SCHEMA, phase: 'Checks', label: 'checks', ...compute('Checks') }
   )
   return res || { checks: [], invariantGates: [] }
 }
@@ -215,7 +237,7 @@ async function checkRequirements() {
       question: `This repo declares mandatory requirements (decided at install). For EACH: decide whether it applies to this diff (appliesWhen), then verify its required evidence was actually produced — inspect the PR/branch for it (attached screenshots, eval/sim output, cycle logs); if you can produce the evidence yourself with the repo's tools, do so. Requirements:\n${mandatory.map(m => `- ${m.requirement} — applies when: ${m.appliesWhen} — required evidence: ${m.requiredEvidence}`).join('\n')}\nMark each satisfied / unmet / blocked / n/a, each with concrete evidence or why it is missing.`,
       evidence: 'A requirement is satisfied ONLY if you can point to the concrete evidence; otherwise it is unmet.',
     }),
-    { schema: REQUIREMENTS_SCHEMA, phase: 'Checks', label: 'requirements-gate' }
+    { schema: REQUIREMENTS_SCHEMA, phase: 'Checks', label: 'requirements-gate', ...compute('Checks') }
   )
   return res || { requirements: [] }
 }
@@ -234,7 +256,7 @@ const [reviewedNested, checkResults, reqResults] = await parallel([
         question: `Review ONLY your lens on the changed files. Report concrete findings (bug, risk, regression) with file:line, severity, and a suggested fix.${job.owns ? ' You also own these checks: ' + job.owns + ' — note whether they pass.' : ''} If your lens turns up nothing real, return an empty findings array — do not invent issues to look busy.`,
         evidence: 'A "finding" without a file:line and a concrete failure mode is an Open question, not a finding.',
       }),
-      { schema: FINDINGS_SCHEMA, phase: 'Review', agentType: job.agentType, label: `review:${job.key}` }
+      { schema: FINDINGS_SCHEMA, phase: 'Review', agentType: job.agentType, label: `review:${job.key}`, ...compute('Review') }
     ),
     (found, job) => verifyFindings(found, job)
   ),
