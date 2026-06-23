@@ -53,8 +53,10 @@ workflow run journals.
 3. **`review.js`** orchestrates: Triage → Review (one specialist per matched roster
    role / risk lens) → Verify (adversarial refutation, panel when `thorough`) →
    Checks (canonical + invariant gate tests) — every prompt built through the
-   standard brief. Returns a **structured** `{verdictSuggested, findings, checks,
-   coverage, riskMap}`.
+   standard brief. Returns a **structured** `{shape, riskMap, findings, checks,
+   mandatoryRequirements, coverage, verdictSuggested, reviewerRole}` — where `shape`
+   is the Change Map (intent/structure/narrative/hotspots), `riskMap` the narrowed
+   triage subset, and each finding carries `kind` + `decision` for adjudication.
 4. **Command** renders the `CONTRACT §5` report from that structured object,
    finalizes the verdict, saves to `.workflows/review-<slug>.md`, prints inline.
 

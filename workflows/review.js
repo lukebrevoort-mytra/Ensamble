@@ -174,6 +174,7 @@ const GENERIC_LENS = {
   correctness: 'correctness reviewer (logic, edge cases, error handling)',
 }
 
+if (!(A && A.reviewerRole)) log('No reviewerRole in args — intake likely skipped (direct scriptPath invocation?); assuming "reviewer" framing.')
 log(`Reviewing ${target} as ${reviewerRole} — ${changedFiles.length} changed file(s), scale=${scale}`)
 
 // ── Phase 1: Shape — read the change as a whole: what it does, how it's built,
@@ -222,7 +223,7 @@ async function verifyFindings(found, job) {
   if (!bugs.length) return forHuman
   if (!budgetOk()) {
     log(`Budget low — accepting ${job.key} bug findings without adversarial verify`)
-    return [...forHuman, ...bugs.map(f => ({ ...f, verified: false }))]
+    return [...forHuman, ...bugs.map(f => ({ ...f, verified: false, verifyVotes: 0 }))]
   }
   const PANEL = ['correctness', 'security/impact', 'does-it-actually-reproduce'] // perspective-diverse lenses
   const verifiedBugs = await parallel(bugs.map(f => () =>

@@ -181,8 +181,12 @@ Pass a JSON Schema to `agent({schema})` so output is validated at the tool layer
 (the model retries on mismatch). This is how we recover the determinism the prose
 era lacked. The canonical shapes the scripts use:
 
-- **Finding** — `{ title, file, line, severity: high|med|low, lens, why,
-  suggestedFix, evidence }`
+- **Finding** — `{ title, file, line, severity: high|med|low, kind:
+  bug|judgment|intent-question, lens, why, suggestedFix, evidence, needsDecision,
+  decision: {question, options, recommendation} }`. `kind` is required: only
+  `bug` is adversarially verified (§4.6) and droppable; `judgment` /
+  `intent-question` (and any absent kind) pass to the human for adjudication
+  (§4.10), carrying `decision` so the launcher can present the choice.
 - **Verdict** (adversarial verify) — `{ refuted: bool, confidence: high|med|low,
   reasoning }`
 - **Checks** — `{ checks: [{name, command, result: pass|fail|blocked, keyLine}],
