@@ -1,0 +1,286 @@
+<title>Workflow Kit — Architecture</title>
+<style>
+  :root{
+    --paper:#faf8f3; --paper-2:#f1eee5; --paper-3:#e6e2d6;
+    --surface:#ffffff; --border:#e3ded1; --border-2:#d3ccba;
+    --ink:#1b1a17; --soft:#3f3d38; --muted:#6b685f; --faint:#a8a499;
+    --accent:#c2502b; --accent-soft:#e8c4b5; --accent-tint:#f6e7df;
+    --forest:#4f7a52; --warn:#b08423; --info:#4a6b8a;
+    --e-1:0 1px 2px rgba(27,26,23,.04),0 1px 1px rgba(27,26,23,.04);
+    --e-2:0 2px 8px rgba(27,26,23,.05),0 1px 2px rgba(27,26,23,.05);
+    --e-3:0 12px 32px rgba(27,26,23,.08),0 3px 8px rgba(27,26,23,.05);
+    --serif:Fraunces,"Hoefler Text",Georgia,"Times New Roman",serif;
+    --sans:"Spline Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:"Spline Sans Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,var(--paper),var(--paper-2));
+    color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:4rem 1.5rem 6rem;}
+  header.hero{margin-bottom:3rem;}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 .75rem;}
+  h1{font-family:var(--serif);font-weight:540;font-size:3.25rem;line-height:1.04;
+    letter-spacing:-.015em;margin:0 0 1rem;}
+  h1 em{font-style:italic;color:var(--accent);}
+  .lede{font-size:1.2rem;color:var(--soft);max-width:64ch;margin:0;}
+  .lede b{color:var(--ink);font-weight:600;}
+  h2{font-family:var(--serif);font-weight:540;font-size:1.9rem;letter-spacing:-.01em;
+    margin:4rem 0 .4rem;}
+  h2 .n{font-family:var(--mono);font-size:.85rem;color:var(--accent);font-weight:500;
+    vertical-align:.5em;margin-right:.6rem;}
+  .sub{color:var(--muted);margin:0 0 1.75rem;max-width:70ch;}
+  section{scroll-margin-top:2rem;}
+
+  .layers{display:grid;grid-template-columns:1fr;gap:1rem;}
+  .layer{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:1.5rem 1.6rem;box-shadow:var(--e-1);position:relative;overflow:hidden;
+    transition:transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s;}
+  .layer:hover{transform:translateY(-2px);box-shadow:var(--e-3);}
+  .layer::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;}
+  .layer.l1::before{background:var(--accent);}
+  .layer.l2::before{background:var(--forest);}
+  .layer.l3::before{background:var(--info);}
+  .layer .tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);}
+  .layer h3{font-family:var(--serif);font-size:1.3rem;font-weight:540;margin:.3rem 0 .5rem;}
+  .layer p{margin:0 0 .75rem;color:var(--soft);font-size:.95rem;}
+  .chips{display:flex;flex-wrap:wrap;gap:.4rem;}
+  .chip{font-family:var(--mono);font-size:.74rem;background:var(--paper-2);
+    border:1px solid var(--border);color:var(--soft);padding:.25rem .6rem;border-radius:999px;}
+  .chip.static{border-color:var(--accent-soft);background:var(--accent-tint);color:#8f3a1f;}
+  .chip.dyn{border-color:#cdd9e0;background:#eef3f6;color:var(--info);}
+  .chip.repo{border-color:#cfe0cf;background:#eef4ee;color:#3c5e3e;}
+
+  .flow{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+  .wf{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:1.4rem 1.4rem 1.5rem;box-shadow:var(--e-1);display:flex;flex-direction:column;
+    transition:transform .22s cubic-bezier(.16,1,.3,1),box-shadow .22s;}
+  .wf:hover{transform:translateY(-3px);box-shadow:var(--e-3);}
+  .wf .cmd{font-family:var(--mono);font-size:.9rem;color:var(--accent);font-weight:500;}
+  .wf h3{font-family:var(--serif);font-size:1.25rem;font-weight:540;margin:.15rem 0 .3rem;}
+  .wf .goal{font-size:.88rem;color:var(--muted);margin:0 0 1rem;min-height:2.4em;}
+  ol.phases{list-style:none;counter-reset:p;margin:0;padding:0;}
+  ol.phases li{counter-increment:p;position:relative;padding:.32rem 0 .32rem 1.9rem;
+    font-size:.86rem;color:var(--soft);border-top:1px solid var(--paper-3);}
+  ol.phases li:first-child{border-top:none;}
+  ol.phases li::before{content:counter(p);position:absolute;left:0;top:.42rem;
+    width:1.3rem;height:1.3rem;border-radius:50%;background:var(--paper-2);
+    border:1px solid var(--border-2);font-family:var(--mono);font-size:.7rem;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);}
+  .wf .out{margin-top:1rem;font-family:var(--mono);font-size:.72rem;color:var(--faint);
+    border-top:1px dashed var(--border-2);padding-top:.7rem;}
+
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:1.5rem 1.6rem;box-shadow:var(--e-1);}
+  .card h3{font-family:var(--serif);font-size:1.25rem;font-weight:540;margin:0 0 .9rem;}
+  .tags{display:flex;flex-direction:column;gap:.55rem;}
+  .ev{display:flex;align-items:baseline;gap:.6rem;font-size:.9rem;}
+  .ev .b{font-family:var(--mono);font-weight:600;font-size:.8rem;white-space:nowrap;}
+  .ev.fact .b{color:var(--forest);} .ev.assume .b{color:var(--warn);}
+  .ev.q .b{color:var(--info);} .ev.block .b{color:var(--accent);}
+  .ev span{color:var(--soft);}
+
+  .loop{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.4rem;}
+  .loop .step{font-family:var(--mono);font-size:.78rem;background:var(--paper-2);
+    border:1px solid var(--border);border-radius:8px;padding:.35rem .7rem;color:var(--soft);}
+  .loop .arr{color:var(--accent);font-weight:700;}
+  .triggers{margin:.9rem 0 0;padding:0;list-style:none;}
+  .triggers li{font-size:.86rem;color:var(--soft);padding:.28rem 0 .28rem 1.3rem;position:relative;}
+  .triggers li::before{content:"→";position:absolute;left:0;color:var(--accent);}
+
+  table.roles{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:.3rem;}
+  table.roles th,table.roles td{text-align:left;padding:.6rem .8rem;border-bottom:1px solid var(--border);vertical-align:top;}
+  table.roles th{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;}
+  table.roles td:first-child{color:var(--soft);}
+  table.roles td:last-child{font-family:var(--mono);font-size:.82rem;color:var(--accent);white-space:nowrap;}
+  table.roles tr:last-child td{border-bottom:none;}
+  .scroll{overflow-x:auto;}
+
+  pre.tree{background:#211f1b;color:#e8e3d6;border-radius:14px;padding:1.4rem 1.6rem;
+    font-family:var(--mono);font-size:.82rem;line-height:1.7;overflow-x:auto;box-shadow:var(--e-2);margin:0;}
+  pre.tree .c{color:#9c978a;} pre.tree .a{color:#e8a07f;} pre.tree .g{color:#9bc39d;} pre.tree .i{color:#9bb8cf;}
+
+  .install{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;}
+  .istep{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);
+    border-radius:14px;padding:1rem 1.1rem;box-shadow:var(--e-1);margin-right:.5rem;margin-bottom:.5rem;position:relative;}
+  .istep .num{font-family:var(--mono);font-size:.7rem;color:var(--accent);}
+  .istep h4{font-family:var(--serif);font-weight:540;font-size:1.02rem;margin:.2rem 0 .35rem;}
+  .istep p{margin:0;font-size:.82rem;color:var(--muted);}
+  footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--border);
+    color:var(--faint);font-size:.85rem;font-family:var(--mono);}
+  @media(max-width:760px){.flow,.twocol{grid-template-columns:1fr}h1{font-size:2.4rem}}
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Portable · Dynamic · Evidence-first</p>
+    <h1>A repo that teaches the workflow, not a workflow that <em>assumes</em> the repo.</h1>
+    <p class="lede">Three reusable software-development workflows — <b>/spec</b>, <b>/execute</b>, <b>/review</b> — that inspect the repository at runtime, generate the specialists they need on the fly, separate proof from guesswork, and revise themselves when reality diverges. Five small files. No static checklists, no permanent role library.</p>
+  </header>
+
+  <section>
+    <h2><span class="n">01</span>Three layers</h2>
+    <p class="sub">Everything in the system sorts into exactly one of three layers. This is the answer to "what is static vs dynamic": the portable layer never names a tool, the repo layer is generated once and maintained, and the dynamic layer is reborn every run.</p>
+    <div class="layers">
+      <div class="layer l1">
+        <span class="tag">Portable · committed · identical everywhere</span>
+        <h3>The contract & the three prompts</h3>
+        <p><code>CONTRACT.md</code> holds the operating rules and the single output format. The three command prompts hold each workflow's goal and phases. None of these name a language, framework, or path — so they drop into any repo unchanged.</p>
+        <div class="chips"><span class="chip static">CONTRACT.md</span><span class="chip static">spec.md</span><span class="chip static">execute.md</span><span class="chip static">review.md</span></div>
+      </div>
+      <div class="layer l2">
+        <span class="tag">Repo-specific · committed · generated then maintained</span>
+        <h3>The repo profile</h3>
+        <p><code>repo-profile.md</code> is the specialization layer — written by the retrofit interview. It pins the repo's real commands, test &amp; simulation harnesses, the MCP services agents may use, subsystem boundaries, and the merge bar. This is what makes generic agents <em>repo-aware</em>.</p>
+        <div class="chips"><span class="chip repo">canonical commands</span><span class="chip repo">test/sim harnesses</span><span class="chip repo">MCP services</span><span class="chip repo">definition of done</span></div>
+      </div>
+      <div class="layer l3">
+        <span class="tag">Dynamic · ephemeral · reborn every run</span>
+        <h3>Recon, artifacts &amp; runtime roles</h3>
+        <p><code>.workflows/recon.md</code> caches detected repo facts. Per-task specs and review reports hand off between workflows. Specialist reviewers and executors are <em>authored as prompts at runtime</em> — never stored as files. Nothing here is committed.</p>
+        <div class="chips"><span class="chip dyn">recon.md cache</span><span class="chip dyn">spec-*.md / review-*.md</span><span class="chip dyn">runtime subagent roles</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>The three workflows</h2>
+    <p class="sub">Each is a thin prompt that loads the contract + profile, then runs adaptive phases. They chain through the gitignored <code>.workflows/</code> handoff space.</p>
+    <div class="flow">
+      <div class="wf">
+        <span class="cmd">/spec</span>
+        <h3>Spec</h3>
+        <p class="goal">Idea → implementation-ready spec, grounded in real code.</p>
+        <ol class="phases">
+          <li>Orient — recon &amp; canonical commands</li>
+          <li>Gather context — parallel explorers, find patterns</li>
+          <li>Define — criteria, affected areas, risks, test strategy</li>
+          <li>Report &amp; hand off</li>
+        </ol>
+        <div class="out">→ .workflows/spec-&lt;slug&gt;.md</div>
+      </div>
+      <div class="wf">
+        <span class="cmd">/execute</span>
+        <h3>Execution</h3>
+        <p class="goal">Spec → adaptive TDD build until criteria &amp; checks pass.</p>
+        <ol class="phases">
+          <li>Orient &amp; lock acceptance criteria</li>
+          <li>Decompose into verifiable tasks</li>
+          <li>Implement — TDD where a test path exists</li>
+          <li>Readjust on hidden coupling / blocks</li>
+          <li>Converge — loop until green, then verify</li>
+        </ol>
+        <div class="out">→ task ledger + evidence table</div>
+      </div>
+      <div class="wf">
+        <span class="cmd">/review</span>
+        <h3>PR Review</h3>
+        <p class="goal">Diff → risk-driven review with a verdict &amp; evidence.</p>
+        <ol class="phases">
+          <li>Acquire diff (PR / branch / merge-base)</li>
+          <li>Infer risk → choose lenses</li>
+          <li>Spawn specialist reviewers in parallel</li>
+          <li>Run the checks that matter</li>
+          <li>Verify findings adversarially → verdict</li>
+        </ol>
+        <div class="out">→ .workflows/review-&lt;slug&gt;.md</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>Evidence &amp; dynamic roles</h2>
+    <p class="sub">Two mechanisms do the heavy lifting: a tagging discipline that keeps proof distinct from narrative, and runtime role generation that replaces a permanent agent library.</p>
+    <div class="twocol">
+      <div class="card">
+        <h3>Every claim wears a tag</h3>
+        <div class="tags">
+          <div class="ev fact"><span class="b">FACT ✓</span><span>verified by command output, file:line, or a test — cited inline</span></div>
+          <div class="ev assume"><span class="b">ASSUMPTION ~</span><span>plausible, unverified — notes how to verify &amp; what breaks if wrong</span></div>
+          <div class="ev q"><span class="b">QUESTION ?</span><span>needs a human decision — notes what unblocks it</span></div>
+          <div class="ev block"><span class="b">BLOCKED ⛔</span><span>can't proceed — notes the blocker &amp; workarounds tried</span></div>
+        </div>
+        <p style="margin:1rem 0 0;font-size:.86rem;color:var(--muted);">An assumption never graduates to fact without evidence. The reader can always tell what was proven.</p>
+      </div>
+      <div class="card">
+        <h3>Specialists are born from the diff</h3>
+        <div class="scroll">
+        <table class="roles">
+          <tr><th>Signal present</th><th>Role spawned</th></tr>
+          <tr><td>Auth / secrets / input surface</td><td>security</td></tr>
+          <tr><td>Schema / data migration</td><td>data-integrity</td></tr>
+          <tr><td>Concurrency / shared state</td><td>race / ordering</td></tr>
+          <tr><td>Public API change</td><td>compatibility</td></tr>
+          <tr><td>Hot path / large data</td><td>performance</td></tr>
+          <tr><td>Stubborn bug</td><td>oracle</td></tr>
+          <tr><td>Acceptance gate</td><td>verifier</td></tr>
+        </table>
+        </div>
+        <p style="margin:.9rem 0 0;font-size:.86rem;color:var(--muted);">The role lives in the prompt, authored at runtime — not on disk. Reuses named agents when present, else <code>general-purpose</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>Dynamic readjustment</h2>
+    <p class="sub">The workflows expect to be wrong up front. Defined triggers force a visible course-correction loop — silent changes aren't allowed; every readjustment lands in the report.</p>
+    <div class="card">
+      <div class="loop">
+        <span class="step">Observe — expected vs found</span><span class="arr">→</span>
+        <span class="step">Reframe — what changes</span><span class="arr">→</span>
+        <span class="step">Re-plan — smallest delta</span><span class="arr">→</span>
+        <span class="step">Log — Readjustments section</span><span class="arr">↺</span>
+      </div>
+      <ul class="triggers">
+        <li>repo structure differs from the plan's assumption</li>
+        <li>the spec is incomplete or self-contradictory</li>
+        <li>implementation reveals hidden coupling</li>
+        <li>the intended test path is unavailable → fall back to characterization / smoke check</li>
+        <li>a verification step is blocked → record BLOCKED, gather best alternative evidence</li>
+        <li>a PR's real risk profile differs from the first read → re-scope reviewers</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span>Install &amp; retrofit</h2>
+    <p class="sub"><code>/workflow-install</code> drops the portable layer into a repo, then runs detection + a short interview so the agents know this repo's real commands, harnesses, and services.</p>
+    <div class="install">
+      <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable contract + 3 commands into <code>.claude/</code>.</p></div>
+      <div class="istep"><div class="num">02</div><h4>Gitignore</h4><p><code>.workflows/</code> scratch space stays uncommitted.</p></div>
+      <div class="istep"><div class="num">03</div><h4>Recon</h4><p>Detect stack, layout, CI's canonical commands.</p></div>
+      <div class="istep"><div class="num">04</div><h4>Interview</h4><p>Fill the gaps detection can't: sims, MCPs, merge bar.</p></div>
+      <div class="istep"><div class="num">05</div><h4>Profile</h4><p>Write <code>repo-profile.md</code> — the specialization layer.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span>On disk</h2>
+    <p class="sub">The committed footprint is five small files; the rest is gitignored scratch and in-memory roles.</p>
+    <pre class="tree"><span class="c">portable source — copy to any machine</span>
+~/.claude/
+  workflow-kit/
+    <span class="a">CONTRACT.md</span>            <span class="c"># shared rules + output format</span>
+    templates/            <span class="c"># spec · execute · review · repo-profile</span>
+  commands/
+    <span class="a">workflow-install.md</span>    <span class="c"># /workflow-install (global)</span>
+
+<span class="c">per-repo after /workflow-install — committed, shared with team</span>
+&lt;repo&gt;/.claude/
+  workflow-kit/
+    <span class="a">CONTRACT.md</span>            <span class="c"># portable — copied verbatim</span>
+    <span class="g">repo-profile.md</span>        <span class="c"># repo-specific — generated by retrofit</span>
+  commands/
+    <span class="a">spec.md  execute.md  review.md</span>
+
+<span class="c">gitignored scratch — handoff &amp; cache</span>
+&lt;repo&gt;/.workflows/
+    <span class="i">recon.md</span>               <span class="c"># cached repo profile, reused by all 3</span>
+    <span class="i">spec-*.md  review-*.md</span>  <span class="c"># cross-session handoff artifacts</span></pre>
+  </section>
+
+  <footer>Workflow Kit · /spec → /execute → /review · evidence over narrative</footer>
+</div>
