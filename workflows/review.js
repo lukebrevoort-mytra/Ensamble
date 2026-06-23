@@ -1,10 +1,10 @@
 export const meta = {
   name: 'review',
-  description: 'Risk-driven, repo-aware code review: triage the diff, fan out specialist reviewers, adversarially verify each finding, run the gate checks, return a structured verdict',
+  description: 'Repo-aware code review built for human involvement: map the change\'s shape, fan out specialist reviewers, separate facts from judgment calls, verify the bugs, and hand back a Change Map + decisions the user owns',
   phases: [
-    { title: 'Triage', detail: 'map the diff to subsystems, risk lenses, and invariants in blast radius' },
-    { title: 'Review', detail: 'one specialist reviewer per matched roster role / risk lens' },
-    { title: 'Verify', detail: 'adversarially refute each finding; drop the ones that do not survive' },
+    { title: 'Shape', detail: 'map the change: intent, structure, reading order, hotspots + risk lenses & invariants' },
+    { title: 'Review', detail: 'one specialist per matched roster role / risk lens; tag findings bug | judgment | intent-question' },
+    { title: 'Verify', detail: 'adversarially refute objective bugs; judgment & intent-questions pass to the human' },
     { title: 'Checks', detail: 'run canonical build/typecheck/lint/tests + invariant gate tests' },
   ],
 }
@@ -30,6 +30,11 @@ const invariants   = (A && A.invariants)    || []            // [{name,blastRadi
 const repoTools    = (A && A.tools)         || []            // tool/MCP ids agents should ToolSearch + use
 const scaleArg     = (A && A.scale)         || 'auto'        // 'quick' | 'auto' | 'thorough'
 const mandatory    = (A && A.mandatoryRequirements) || []    // [{requirement, appliesWhen, requiredEvidence}] — decided at install
+// Human-involvement context, set by the launcher at intake (CONTRACT §4.10):
+const reviewerRole = (A && A.reviewerRole)  || 'reviewer'    // 'author' (wrote it) | 'reviewer' (sent to review it)
+const focus        = (A && A.focus)         || ''            // what the human asked us to scrutinize
+const intent       = (A && A.intent)        || ''            // author's stated intent / what the change does & why
+const outOfScope   = (A && A.outOfScope)    || ''            // known / intentional / out-of-scope — do NOT flag
 
 // Adaptive scale (CONTRACT §4.6): lean crew for small diffs, full panel for big
 // ones, and a token target — if the user set one — is a hard ceiling.
@@ -42,12 +47,12 @@ const LENS_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 12 : 6
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
 
 // Per-phase compute (CONTRACT §4.9) — effort-first tiering. The built-in defaults
-// drop mechanical phases (checks) to low and raise hard-reasoning phases (triage,
+// drop mechanical phases (checks) to low and raise hard-reasoning phases (shape,
 // verify) to high; `phasePolicy` from the repo profile overrides per phase, and may
 // pin a model only when the repo genuinely warrants it (model is never defaulted —
 // absent → inherit the session model).
 const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
-const DEFAULT_TIER = { triage: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+const DEFAULT_TIER = { shape: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
 function compute(phaseName) {
   const k = phaseName.toLowerCase()
   const pol = phasePolicy[k] || {}
@@ -60,8 +65,8 @@ function compute(phaseName) {
 }
 
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
-// subagent is "naked": each re-orients on repo context and knows its tools. This
-// is the core fix for orchestration's two failure modes. ──────────────────────
+// subagent is "naked": each re-orients on repo context, knows its tools, and
+// honors what the human told us at intake. ───────────────────────────────────
 function brief({ role, scope, question, evidence, schemaNote }) {
   return [
     `You are a ${role} reviewing a code change in THIS repository. Be skeptical and concrete.`,
@@ -76,6 +81,9 @@ function brief({ role, scope, question, evidence, schemaNote }) {
     repoTools.length
       ? `\n## Use this repo's tools\nFor real evidence (not guesses) you may use: ${repoTools.join(', ')}. Load any you need with ToolSearch ("select:<name>") before calling it.`
       : ``,
+    (intent || focus || outOfScope)
+      ? `\n## What the human told us (honor this)\n${intent ? `- Intent of the change: ${intent}\n` : ''}${focus ? `- Focus especially on: ${focus}\n` : ''}${outOfScope ? `- Out of scope / intentional — do NOT flag these: ${outOfScope}` : ''}`
+      : ``,
     ``,
     `## Your single job`,
     question,
@@ -87,10 +95,24 @@ function brief({ role, scope, question, evidence, schemaNote }) {
 }
 
 // ── Schemas (CONTRACT §4.7): output validated at the tool layer, retried on miss.
-const RISK_MAP_SCHEMA = {
+// SHAPE = the change map (comprehension) + risk triage, in one pass.
+const SHAPE_SCHEMA = {
   type: 'object',
-  required: ['subsystems', 'lenses', 'invariantsInBlastRadius', 'rosterToSpawn'],
+  required: ['intent', 'structure', 'narrative', 'subsystems', 'lenses', 'invariantsInBlastRadius', 'rosterToSpawn'],
   properties: {
+    // comprehension — the "shape" the human needs to feel oriented
+    intent: { type: 'string', description: 'what this change does and why, in repo terms — one short paragraph' },
+    structure: { type: 'array', items: { type: 'object', required: ['group', 'files'], properties: {
+      group: { type: 'string', description: 'role of this cluster: core | callers | tests | config | docs | types | ...' },
+      files: { type: 'array', items: { type: 'string' } }, note: { type: 'string' } } } },
+    relationships: { type: 'array', items: { type: 'object', required: ['from', 'to'], properties: {
+      from: { type: 'string' }, to: { type: 'string' }, kind: { type: 'string', description: 'calls | tested-by | imports | configures | extends' } } } },
+    narrative: { type: 'array', items: { type: 'object', required: ['step'], properties: {
+      step: { type: 'string' }, where: { type: 'string', description: 'file:line to start reading this step' } } },
+      description: 'ordered reading walk — how to read the change like a story' },
+    hotspots: { type: 'array', items: { type: 'object', required: ['where'], properties: {
+      where: { type: 'string' }, why: { type: 'string' } } }, description: 'where attention/risk concentrates' },
+    // triage — risk routing (consumed downstream)
     subsystems: { type: 'array', items: { type: 'object', required: ['name', 'files'], properties: {
       name: { type: 'string' }, files: { type: 'array', items: { type: 'string' } } } } },
     lenses: { type: 'array', items: { type: 'string' },
@@ -104,10 +126,15 @@ const FINDINGS_SCHEMA = {
   type: 'object',
   required: ['findings'],
   properties: {
-    findings: { type: 'array', items: { type: 'object', required: ['title', 'file', 'severity', 'why'], properties: {
+    findings: { type: 'array', items: { type: 'object', required: ['title', 'file', 'severity', 'why', 'kind'], properties: {
       title: { type: 'string' }, file: { type: 'string' }, line: { type: ['integer', 'null'] },
       severity: { type: 'string', enum: ['high', 'med', 'low'] }, lens: { type: 'string' },
-      why: { type: 'string' }, suggestedFix: { type: 'string' }, evidence: { type: 'string' } } } },
+      kind: { type: 'string', enum: ['bug', 'judgment', 'intent-question'],
+        description: 'bug = objective defect (gets adversarially verified); judgment = a call the human should make (structure/naming/risk-appetite); intent-question = needs the author to confirm intent before it is even a problem' },
+      why: { type: 'string' }, suggestedFix: { type: 'string' }, evidence: { type: 'string' },
+      needsDecision: { type: 'boolean', description: 'true for judgment & intent-question, and for high/med bugs — the human should weigh in' },
+      decision: { type: 'object', description: 'the human-facing decision this finding poses', properties: {
+        question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, recommendation: { type: 'string' } } } } } },
     coverageNotes: { type: 'string', description: 'what you did NOT or could not check in your lens' },
   },
 }
@@ -147,20 +174,22 @@ const GENERIC_LENS = {
   correctness: 'correctness reviewer (logic, edge cases, error handling)',
 }
 
-log(`Reviewing ${target} — ${changedFiles.length} changed file(s), scale=${scale}`)
+log(`Reviewing ${target} as ${reviewerRole} — ${changedFiles.length} changed file(s), scale=${scale}`)
 
-// ── Phase 1: Triage — one pass to decide where the risk actually is. ──────────
-phase('Triage')
+// ── Phase 1: Shape — read the change as a whole: what it does, how it's built,
+// how to read it, where the risk is, and which lenses/roster to spawn. This is
+// what makes the human feel oriented (CONTRACT §4.10) — not just a risk list. ──
+phase('Shape')
 const risk = await agent(
   brief({
-    role: 'change-risk triage analyst',
+    role: 'change cartographer & risk-triage analyst',
     scope: changedFiles.join(', '),
-    question: `Map this change: which subsystems it touches; which risk lenses are present (security, data-migration, concurrency, api-contract, performance, ui, build-release, correctness); which of these repo invariants fall in its blast radius [${invariants.map(i => i.name).join(', ') || 'none defined'}]; and which of these repo roster roles should review it [${roster.map(r => r.name).join(', ') || 'none defined'}]. Resolve the diff with the repo's VCS yourself (target: ${target}, base: ${base || 'merge-base with default branch'}).`,
-    evidence: 'Base every lens on a concrete hunk you actually saw.',
+    question: `Read the WHOLE change and produce its SHAPE so a human can understand it at a glance:\n- intent: what this change does and why, in this repo's terms (one short paragraph)${intent ? ` — the author says: "${intent}"; confirm or refine it against the actual code` : ''}.\n- structure: cluster the changed files by role (core / callers / tests / config / ...), with the relationships between clusters (calls, tested-by, imports).\n- narrative: an ordered reading walk — where to start and how to read it like a story (each step with a file:line).\n- hotspots: where attention/risk concentrates.\nThen triage risk: which risk lenses are present (security, data-migration, concurrency, api-contract, performance, ui, build-release, correctness); which of these repo invariants fall in the blast radius [${invariants.map(i => i.name).join(', ') || 'none defined'}]; which of these roster roles should review it [${roster.map(r => r.name).join(', ') || 'none defined'}]. Resolve the diff with the repo's VCS yourself (target: ${target}, base: ${base || 'merge-base with default branch'}).`,
+    evidence: 'Base the shape and every lens on hunks you actually read.',
   }),
-  { schema: RISK_MAP_SCHEMA, phase: 'Triage', label: 'risk-map', ...compute('Triage') }
+  { schema: SHAPE_SCHEMA, phase: 'Shape', label: 'shape-map', ...compute('Shape') }
 )
-if (!risk) return { error: 'Triage failed — could not map the diff. Re-run /review or confirm the target resolves to a real diff.' }
+if (!risk) return { error: 'Shape mapping failed — could not read the diff. Re-run /review or confirm the target resolves to a real diff.' }
 
 // ── Build the review job list: matched roster roles (by their real agentType)
 // first (CONTRACT §4.5), then generic lenses to cover what the roster misses. ──
@@ -179,21 +208,30 @@ if (jobs.length > LENS_CAP) {
 }
 if (!jobs.length) jobs = [{ key: 'correctness', role: GENERIC_LENS.correctness, agentType: 'general-purpose', scope: changedFiles.join(', ') }]
 
-// ── adversarial verification of one job's findings (CONTRACT §4.6) ────────────
+// ── Verification (CONTRACT §4.6): objective bugs get adversarially refuted to drop
+// false positives. Judgment calls & intent-questions are NOT refuted — they are
+// opinions/questions for the human, so they pass straight through to adjudication.
 async function verifyFindings(found, job) {
   if (!found || !found.findings || !found.findings.length) return []
+  const tagged = found.findings.map(f => ({ ...f, lens: f.lens || job.key }))
+  // Only an EXPLICIT kind:'bug' is refutable/droppable. Everything else — judgment,
+  // intent-question, or an absent/unknown kind — passes straight to the human and is
+  // never silently dropped (CONTRACT §4.10: only verified objective bugs get filtered).
+  const forHuman = tagged.filter(f => f.kind !== 'bug')
+  const bugs = tagged.filter(f => f.kind === 'bug')
+  if (!bugs.length) return forHuman
   if (!budgetOk()) {
-    log(`Budget low — accepting ${job.key} findings without adversarial verify`)
-    return found.findings.map(f => ({ ...f, lens: f.lens || job.key, verified: false }))
+    log(`Budget low — accepting ${job.key} bug findings without adversarial verify`)
+    return [...forHuman, ...bugs.map(f => ({ ...f, verified: false }))]
   }
   const PANEL = ['correctness', 'security/impact', 'does-it-actually-reproduce'] // perspective-diverse lenses
-  return parallel(found.findings.map(f => () =>
+  const verifiedBugs = await parallel(bugs.map(f => () =>
     parallel(Array.from({ length: VERIFY_VOTES }, (_, k) => () =>
       agent(
         brief({
           role: `skeptical verifier (${VERIFY_VOTES > 1 ? PANEL[k % PANEL.length] : 'refutation'} lens)`,
           scope: f.file,
-          question: `Try to REFUTE this claimed finding: "${f.title}" at ${f.file}:${f.line == null ? '?' : f.line} — ${f.why}. Read the code and the diff yourself. Default to refuted=true if you cannot independently confirm it is a real problem in this repo's context.`,
+          question: `Try to REFUTE this claimed bug: "${f.title}" at ${f.file}:${f.line == null ? '?' : f.line} — ${f.why}. Read the code and the diff yourself. Default to refuted=true if you cannot independently confirm it is a real problem in this repo's context.`,
           evidence: 'Confirm or refute from the actual code, not plausibility.',
         }),
         { schema: VERDICT_SCHEMA, phase: 'Verify', label: `verify:${f.file}`, ...compute('Verify') }
@@ -201,9 +239,10 @@ async function verifyFindings(found, job) {
     )).then(votes => {
       const live = votes.filter(Boolean)
       const survives = live.length > 0 && live.filter(v => !v.refuted).length >= Math.ceil(live.length / 2)
-      return survives ? { ...f, lens: f.lens || job.key, verified: true, verifyVotes: live.length } : null
+      return survives ? { ...f, verified: true, verifyVotes: live.length } : null
     })
   )).then(rs => rs.filter(Boolean))
+  return [...forHuman, ...verifiedBugs]
 }
 
 // ── run canonical checks + mandatory invariant gate tests for this diff ───────
@@ -253,8 +292,8 @@ const [reviewedNested, checkResults, reqResults] = await parallel([
       brief({
         role: job.role,
         scope: job.scope,
-        question: `Review ONLY your lens on the changed files. Report concrete findings (bug, risk, regression) with file:line, severity, and a suggested fix.${job.owns ? ' You also own these checks: ' + job.owns + ' — note whether they pass.' : ''} If your lens turns up nothing real, return an empty findings array — do not invent issues to look busy.`,
-        evidence: 'A "finding" without a file:line and a concrete failure mode is an Open question, not a finding.',
+        question: `Review ONLY your lens on the changed files. For EACH finding give file:line, severity, and \`kind\`: "bug" (an objective defect), "judgment" (a call a human should make — structure, naming, risk appetite, alternative design), or "intent-question" (you need the author to confirm intent before it is even a problem). For judgment & intent-question findings, fill \`decision\` with a crisp \`question\` for the human, 2–4 \`options\`, and your \`recommendation\`, and set \`needsDecision\` true (also set it true for high/med bugs). Add \`suggestedFix\` for bugs.${job.owns ? ' You also own these checks: ' + job.owns + ' — note whether they pass.' : ''} The reader is the change's ${reviewerRole === 'author' ? 'AUTHOR — frame findings as what a reviewer will flag and where their intent matters' : 'REVIEWER deciding whether to merge — frame findings to support that decision'}. If your lens turns up nothing real, return an empty findings array — do not invent issues to look busy.`,
+        evidence: 'A "finding" without a file:line and a concrete failure mode is an Open question, not a finding. Never flag anything the human marked out-of-scope / intentional.',
       }),
       { schema: FINDINGS_SCHEMA, phase: 'Review', agentType: job.agentType, label: `review:${job.key}`, ...compute('Review') }
     ),
@@ -264,9 +303,13 @@ const [reviewedNested, checkResults, reqResults] = await parallel([
   () => checkRequirements(),
 ])
 
-// ── Synthesize a suggested verdict; the /review command makes the final call. ─
+// ── Synthesize a SUGGESTED verdict. The launcher renders the Change Map, runs
+// human adjudication on the judgment / intent-question findings, and sets the
+// FINAL verdict — so this is only a starting point (CONTRACT §4.10).
 const confirmed = (reviewedNested || []).flat().filter(Boolean)
-const sev = s => confirmed.filter(f => f.severity === s)
+const bugs = confirmed.filter(f => f.kind === 'bug')        // explicit bugs only (mirrors verifyFindings)
+const decisions = confirmed.filter(f => f.kind !== 'bug')   // judgment / intent-question / unclassified → the human (clean partition, no overlap)
+const sev = s => bugs.filter(f => f.severity === s)
 const checks = checkResults || { checks: [], invariantGates: [] }
 const failedChecks = (checks.checks || []).filter(c => c.result === 'fail')
 const failedGates = (checks.invariantGates || []).filter(g => g.result === 'fail')
@@ -277,22 +320,36 @@ const blockedReqs = reqs.filter(r => r.status === 'blocked')  // mandatory evide
 let verdictSuggested
 if (failedGates.length || blockedReqs.length) verdictSuggested = 'BLOCK'
 else if (failedChecks.length || unmetReqs.length || sev('high').length || sev('med').length) verdictSuggested = 'REQUEST CHANGES'
-else if (sev('low').length) verdictSuggested = 'APPROVE WITH NITS'
+else if (sev('low').length || decisions.length) verdictSuggested = 'APPROVE WITH NITS'
 else verdictSuggested = 'APPROVE'
 
-log(`Done — ${confirmed.length} confirmed finding(s), ${unmetReqs.length + blockedReqs.length} unmet requirement(s); suggested verdict: ${verdictSuggested}`)
+log(`Done — ${bugs.length} bug(s), ${decisions.length} decision(s) for the human, ${unmetReqs.length + blockedReqs.length} unmet requirement(s); suggested verdict: ${verdictSuggested}`)
 
 return {
   target,
   scale,
+  reviewerRole,
   verdictSuggested,
-  riskMap: risk,
+  shape: {
+    intent: risk.intent || '',
+    structure: risk.structure || [],
+    relationships: risk.relationships || [],
+    narrative: risk.narrative || [],
+    hotspots: risk.hotspots || [],
+  },
+  riskMap: {
+    subsystems: risk.subsystems || [],
+    lenses: risk.lenses || [],
+    invariantsInBlastRadius: risk.invariantsInBlastRadius || [],
+    rosterToSpawn: risk.rosterToSpawn || [],
+  },
   findings: confirmed,
   checks,
   mandatoryRequirements: reqs,
   coverage: {
     lensesReviewed: jobs.map(j => j.key),
     invariantsGated: (checks.invariantGates || []).map(g => g.invariant),
+    decisionsForHuman: decisions.length,
     mandatoryUnmet: unmetReqs.map(r => r.requirement),
     mandatoryBlocked: blockedReqs.map(r => r.requirement),
     droppedToBudget: !budgetOk(),

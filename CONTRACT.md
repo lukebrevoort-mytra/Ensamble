@@ -239,6 +239,28 @@ session model. This is one more axis of tuning the workflow to the repo: a giant
 monorepo can make broad `gather` cheaper; a sim-heavy repo can make `verify` stronger
 — without editing a script.
 
+### 4.10 Human-in-the-loop — comprehension first, decisions owned by the user
+
+A workflow script runs detached and its agents cannot pause to ask the user, so all
+human interaction lives in the **launcher** (the command), which brackets the sweep.
+This is what turns a sweeping report into a collaboration instead of a verdict handed
+down — the fix for "I didn't feel involved":
+
+- **Intake (before the workflow):** confirm who the user is and capture what only they
+  know — for `/review`, author-vs-reviewer, plus focus / intent / out-of-scope — and
+  pass it in `args` so every agent's brief honors it. A sweep the user never shaped is
+  exactly what makes them feel uninvolved.
+- **Comprehension before issues:** lead the output with the **shape** of the work — a
+  Change Map (intent, structure, reading order, hotspots), not a raw list of findings.
+  People disengage when handed issues with no map; orient them first.
+- **Separate facts from judgment:** tag findings `bug` (objective — the workflow
+  adversarially verifies these) vs `judgment` / `intent-question` (opinions/questions
+  — the user's call). Only the latter need adjudication.
+- **Adjudication (after the workflow):** the workflow *prepares* each decision
+  (question, options, recommendation); the **user makes it** and owns the final
+  verdict. `verdictSuggested` is a starting point, never the last word. Scale how much
+  you interrupt to the work — adjudicate what matters, list nits.
+
 ---
 
 ## 5. Dynamic readjustment — revise when reality diverges
