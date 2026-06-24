@@ -101,7 +101,7 @@ reach a repo on its own. Pull the kit, then:
 
 ```
 /ensemble-update                 # sync the current repo to the latest kit
-/ensemble-update --all           # sync every Ensemble install under ~/work (or pass a root)
+/ensemble-update --all           # sync every install under the current dir (or pass a root)
 /ensemble-update --all --check   # dry-run: report which repos are stale, change nothing
 ```
 

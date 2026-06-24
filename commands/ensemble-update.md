@@ -30,7 +30,7 @@ the kit's **current working state** (say so in the report) rather than failing.
 Parse `$ARGUMENTS`:
 - a **single repo path** (contains `.claude/ensemble/CONTRACT.md`) → just that repo;
 - empty → the **current working directory** if it's an install, else fall through to scan;
-- `--all [<root>]` → **scan** `<root>` (default: the parent dir of `<KIT>`, e.g. `~/work`)
+- `--all [<root>]` → **scan** `<root>` (default: the current working directory)
   for every directory containing `.claude/ensemble/CONTRACT.md` and update them all;
 - `--check` (any target form) → **dry-run**: report staleness, copy nothing.
 
