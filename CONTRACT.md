@@ -166,6 +166,18 @@ PER-AGENT part after a delimiter.
 9. **Single job** — the one narrow question it must answer.
 10. **Schema note** — return only the structured object; it is data, not a message.
 
+**Profile digest — pay for the full profile only where it's needed.** The full `profile`
+is the single biggest per-agent payload, and (measured — it's written per agent, never
+shared across siblings) it scales with `N_agents × profile_size`. So the launcher distills
+a compact **`profileDigest`** (stack · key conventions / "done" bar · must-not-break
+invariants) and the brief gives **that** to **fan-out agents** (lenses, verifiers,
+explorers, implementers, check-runners) while reserving the **full profile for synthesis
+agents** (`fullProfile: true` — the cartographer / planner / drafter / critic that need the
+whole picture). This drops the profile write on every fan-out agent — a linear saving that
+grows with profile size and fan-out width (measured ~$0.5/fan-out-agent on a ~13k-token
+profile; a no-op on small/empty profiles). **Fallback:** no `profileDigest` supplied (e.g.
+an un-updated install) → the brief uses the full profile for everyone, so nothing regresses.
+
 ### 4.4 Tool-awareness rule
 
 Orchestrated agents must use the repo's real tools instead of guessing. The command

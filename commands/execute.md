@@ -30,6 +30,10 @@ the criteria lock in §4 — it sets the contract the loop then satisfies on its
    - `phasePolicy` — `{phase: {effort, model}}` from **Phase compute policy** (optional;
      omit to use the script's built-in effort defaults — CONTRACT §4.9).
    If the profile is missing, proceed with empty values and flag the gap.
+3. **Distill a `profileDigest`** — a compact ~300–500-token orientation (stack · key
+   conventions / "done" bar · must-not-break invariants) for fan-out agents. Pass it
+   with the full `profile`: the workflow gives the planner the full profile and the
+   implement/verify agents the digest (CONTRACT §4.3). No profile → leave it empty.
 
 ## 2 — Ensure recon
 Load `.workflows/recon.md` if fresh; otherwise run CONTRACT §2 recon and cache it.
@@ -85,7 +89,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, spec, criteria, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug, branch }
+{ profile, profileDigest, recon, spec, criteria, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug, branch }
 ```
 `criteria` is the **locked** set from §4 — the loop decomposes against it, never
 re-authors it. Let the script own decomposition and the implement→verify→loop-back

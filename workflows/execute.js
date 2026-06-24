@@ -15,6 +15,7 @@ export const meta = {
 // script works whether args is a string or an already-parsed object.
 const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
 const profile    = (A && A.profile)    || ''
+const profileDigest = (A && A.profileDigest) || ''   // compact orientation for fan-out (implement/verify) agents (CONTRACT §4.3); '' → fall back to full profile
 const recon      = (A && A.recon)       || ''
 const spec       = (A && A.spec)        || ''   // resolved spec text, passed by /execute
 const criteria   = (A && A.criteria)    || []   // LOCKED, human-confirmed passing criteria: [{id, criterion, verifyBy, source}] (CONTRACT §4.8)
@@ -79,10 +80,16 @@ function mandatoryLine() {
 // byte-identical across every agent this run; per-agent text (role, scope, upstream
 // context, job) sits BELOW the ─── delimiter. (Measured caveat in CONTRACT §4.3: this is
 // clean structure, not a token saving in the current harness.)
-function brief({ role, scope, question, evidence, schemaNote, context }) {
+function brief({ role, scope, question, evidence, schemaNote, context, fullProfile }) {
+  // DIGEST for fan-out (implement/verify/check) agents; full profile for synthesis
+  // (fullProfile) and the no-digest fallback (CONTRACT §4.3).
+  const useFull = fullProfile || !profileDigest
+  const profileBlock = useFull
+    ? (profile ? `## Repo profile — ground truth (canonical commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>` : `## No repo-profile.md exists\nDetect conventions from neighbouring files before changing anything.`)
+    : `## Repo orientation (digest — the essentials; synthesis agents read the full profile)\n${profileDigest}`
   return [
     // ── STATIC PREAMBLE — same for all agents this run ────────────────────────────
-    profile ? `## Repo profile — ground truth (canonical commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>` : `## No repo-profile.md exists\nDetect conventions from neighbouring files before changing anything.`,
+    profileBlock,
     recon ? `## Cached recon (stack / layout / commands)\n<recon>\n${recon}\n</recon>` : ``,
     repoTools.length ? `## Repo tools\nUse these for real work/evidence (not guesses): ${repoTools.join(', ')}. Load any with ToolSearch ("select:<name>") before calling it.` : ``,
     `## Evidence discipline (CONTRACT §3)\nTag every claim FACT ✓ (file:line / command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. A claim without evidence is a QUESTION, not a FACT.`,
@@ -183,6 +190,7 @@ const plan = await agent(
       `For each task: a stable id, what to do, the criterion id(s) it advances (criterionIds), whether a real test path exists (hasTestPath), and the files it touches. Sequence by dependency.`,
     ].join('\n'),
     evidence: 'Every criterion must map to ≥1 task; flag any criterion you cannot map as a QUESTION.',
+    fullProfile: true,   // synthesis: the planner decomposes against the whole spec/profile — full profile
   }),
   { schema: TASK_LEDGER_SCHEMA, phase: 'Plan', label: 'decompose', ...compute('Plan') }
 )

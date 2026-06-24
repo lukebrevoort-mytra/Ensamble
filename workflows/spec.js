@@ -14,6 +14,7 @@ export const meta = {
 // script works whether args is a string or an already-parsed object.
 const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
 const profile    = (A && A.profile)    || ''
+const profileDigest = (A && A.profileDigest) || ''   // compact orientation for fan-out (explorer) agents (CONTRACT §4.3); '' → fall back to full profile
 const recon      = (A && A.recon)       || ''
 const request    = (A && A.request)     || ''
 const commands   = (A && A.commands)    || {}
@@ -67,10 +68,16 @@ Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePoli
 // discipline) is byte-identical across every agent this run, forming a stable prefix any
 // prompt-prefix cache can reuse. Per-agent text (role, scope, upstream context, job) sits
 // BELOW the ─── delimiter.
-function brief({ role, scope, question, evidence, schemaNote, context }) {
+function brief({ role, scope, question, evidence, schemaNote, context, fullProfile }) {
+  // DIGEST for fan-out (explorer) agents; full profile for synthesis (fullProfile) and the
+  // no-digest fallback (CONTRACT §4.3).
+  const useFull = fullProfile || !profileDigest
+  const profileBlock = useFull
+    ? (profile ? `## Repo profile — ground truth (commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>` : `## No repo-profile.md exists\nDetect conventions from neighbouring files before asserting anything.`)
+    : `## Repo orientation (digest — the essentials; synthesis agents read the full profile)\n${profileDigest}`
   return [
-    // ── STATIC PREAMBLE — same for all agents this run (cacheable prefix) ──────────
-    profile ? `## Repo profile — ground truth (commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>` : `## No repo-profile.md exists\nDetect conventions from neighbouring files before asserting anything.`,
+    // ── STATIC PREAMBLE — same for all agents this run ────────────────────────────
+    profileBlock,
     recon ? `## Cached recon (stack / layout / commands)\n<recon>\n${recon}\n</recon>` : ``,
     repoTools.length ? `## Repo tools\nFor real evidence you may use: ${repoTools.join(', ')}. Load any with ToolSearch ("select:<name>") before calling it.` : ``,
     `## Evidence discipline (CONTRACT §3)\nTag every claim FACT ✓ (file:line / command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. A claim without evidence is a QUESTION, not a FACT.`,
@@ -151,6 +158,7 @@ const scoped = await agent(
     scope: '',
     question: `For this request, identify the repo areas/subsystems it touches, 2–3 existing patterns to mirror (file:line), and the unknowns a spec must resolve. Request:\n"""${request}"""`,
     evidence: 'Name real paths you confirmed exist.',
+    fullProfile: true,   // synthesis: scoping spans the whole repo — full profile
   }),
   { schema: SCOPE_SCHEMA, phase: 'Scope', label: 'scope', ...compute('Scope') }
 )
@@ -191,6 +199,7 @@ const spec = await agent(
     question: `Using the gathered context below, write an implementation-ready spec for the request. Every acceptance criterion must be concrete and testable (a command or observable behavior). Flag which invariants [${invariants.map(i => i.name).join(', ') || 'none'}] and mandatory requirements [${mandatory.map(m => m.requirement).join(', ') || 'none'}] this change touches — those become non-negotiable downstream gates. Anchor the approach to existing patterns by file:line.\n\nGathered context:\n${JSON.stringify(contexts).slice(0, 6000)}\n\nRequest:\n"""${request}"""`,
     evidence: 'Tie acceptance criteria to how each is verified.',
     context: scopeContext,
+    fullProfile: true,   // synthesis: the drafter authors the spec — full profile
   }),
   { schema: SPEC_SCHEMA, phase: 'Draft', label: 'draft-spec', ...compute('Draft') }
 )
@@ -206,6 +215,7 @@ if (budgetOk()) {
       scope: '',
       question: `Adversarially critique this spec: untestable criteria, missing edge cases, hidden coupling, contradictions, and any invariant/mandatory-requirement it fails to address. Be specific about the smallest fix for each gap.\n\nSpec:\n${JSON.stringify(spec).slice(0, 6000)}`,
       evidence: 'Each gap: what is missing and the smallest fix.',
+      fullProfile: true,   // synthesis: the critic judges the whole spec — full profile
     }),
     { schema: CRITIQUE_SCHEMA, phase: 'Critique', label: 'critique', ...compute('Critique') }
   )

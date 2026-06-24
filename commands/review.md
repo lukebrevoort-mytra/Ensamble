@@ -14,6 +14,11 @@ Read `.claude/ensemble/CONTRACT.md` (obey it all run). If
 `.claude/ensemble/repo-profile.md` exists, read it as ground truth and parse:
 `roster`, `invariants`, `tools`, `commands`, `mandatoryRequirements`, `phasePolicy`
 (see CONTRACT §4). Missing profile → empty values + flag the gap.
+Then **distill a `profileDigest`** — a compact ~300–500-token orientation (stack · the
+highest-signal conventions / "done" bar · the must-not-break invariants) that every
+fan-out agent needs. Pass it alongside the full `profile`: the workflow gives the digest
+to fan-out reviewers and the full profile only to synthesis agents (CONTRACT §4.3). No
+profile → leave `profileDigest` empty (the workflow then uses the full profile for all).
 
 ## 2 — Who are you? (auto-detect, then confirm) — sets the whole tone
 Detect the persona, don't assume:
@@ -47,7 +52,7 @@ unless a finding is contested.
 `Workflow({ name: "review", args })` (installed) or `Workflow({ scriptPath:
 "<KIT>/workflows/review.js", args })` (not yet installed), with `args` =
 ```
-{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, reviewerRole, focus, intent, outOfScope, scale, costMode, slug }
+{ profile, profileDigest, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, reviewerRole, focus, intent, outOfScope, scale, costMode, slug }
 ```
 Let it run — it maps the shape, fans out reviewers, tags findings `bug` /
 `judgment` / `intent-question`, adversarially verifies the bugs, and runs the checks.

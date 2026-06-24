@@ -22,6 +22,11 @@ opt-in; launch it without asking for further permission.
    - `phasePolicy` — `{phase: {effort, model}}` from **Phase compute policy** (optional;
      omit to use the script's built-in effort defaults — CONTRACT §4.9).
    If the profile is missing, proceed with empty values and flag the gap as a QUESTION.
+3. **Distill a `profileDigest`** — a compact ~300–500-token orientation (stack · key
+   conventions / "done" bar · must-not-break invariants) for fan-out agents. Pass it
+   with the full `profile`: the workflow gives synthesis agents (scope/draft/critique)
+   the full profile and the parallel explorers the digest (CONTRACT §4.3). No profile →
+   leave `profileDigest` empty.
 
 ## 2 — Ensure recon
 Load `.workflows/recon.md` if fresh; otherwise run CONTRACT §2 recon and cache it.
@@ -41,7 +46,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug }
+{ profile, profileDigest, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug }
 ```
 Let the script own scoping, the parallel explorers, the draft, and the critique.
 

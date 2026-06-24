@@ -20,6 +20,7 @@ export const meta = {
 // ─────────────────────────────────────────────────────────────────────────────
 const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (args || {})
 const profile      = (A && A.profile)      || ''            // full repo-profile.md text ('' if none)
+const profileDigest = (A && A.profileDigest) || ''          // compact orientation for fan-out agents (CONTRACT §4.3); full profile reserved for synthesis roles. '' → fall back to full profile
 const recon        = (A && A.recon)         || ''            // cached .workflows/recon.md text/summary
 const target       = (A && A.target)        || 'current branch'
 const base         = (A && A.base)          || ''            // merge-base ref, resolved by the command
@@ -84,16 +85,21 @@ Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePoli
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
 // subagent is "naked": each re-orients on repo context, knows its tools, and
 // honors what the human told us at intake. ───────────────────────────────────
-// Ordering matters (CONTRACT §4.3): the STATIC preamble (profile, recon, tools, the
-// human's run-wide context, evidence discipline) is byte-identical across every agent
-// this run, so it forms a stable prefix any prompt-prefix cache can reuse. All PER-AGENT
-// text (role, scope, the upstream Change Map, the job) lives BELOW the ─── delimiter.
-function brief({ role, scope, question, evidence, schemaNote, context }) {
+// Ordering (CONTRACT §4.3): the STATIC preamble (profile/digest, recon, tools, the human's
+// run-wide context, evidence discipline) comes first; PER-AGENT text (role, scope, the
+// upstream Change Map, the job) lives BELOW the ─── delimiter. The profile block is the
+// DIGEST for fan-out agents and the full profile for synthesis agents (fullProfile: true) —
+// and falls back to the full profile whenever no digest was supplied (no regression).
+function brief({ role, scope, question, evidence, schemaNote, context, fullProfile }) {
+  const useFull = fullProfile || !profileDigest
+  const profileBlock = useFull
+    ? (profile
+        ? `## Repo profile — ground truth (commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>`
+        : `## No repo-profile.md exists\nDetect conventions from neighbouring files before asserting anything.`)
+    : `## Repo orientation (digest — the essentials; synthesis agents read the full profile)\n${profileDigest}`
   return [
-    // ── STATIC PREAMBLE — same for all agents this run (cacheable prefix) ──────────
-    profile
-      ? `## Repo profile — ground truth (commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>`
-      : `## No repo-profile.md exists\nDetect conventions from neighbouring files before asserting anything.`,
+    // ── STATIC PREAMBLE — same for all agents this run ────────────────────────────
+    profileBlock,
     recon ? `## Cached recon (stack / layout / commands)\n<recon>\n${recon}\n</recon>` : ``,
     repoTools.length
       ? `## Use this repo's tools\nFor real evidence (not guesses) you may use: ${repoTools.join(', ')}. Load any you need with ToolSearch ("select:<name>") before calling it.`
@@ -218,6 +224,7 @@ const risk = await agent(
     scope: changedFiles.join(', '),
     question: `Read the WHOLE change and produce its SHAPE so a human can understand it at a glance:\n- intent: what this change does and why, in this repo's terms (one short paragraph)${intent ? ` — the author says: "${intent}"; confirm or refine it against the actual code` : ''}.\n- structure: cluster the changed files by role (core / callers / tests / config / ...), with the relationships between clusters (calls, tested-by, imports).\n- narrative: an ordered reading walk — where to start and how to read it like a story (each step with a file:line).\n- hotspots: where attention/risk concentrates.\nThen triage risk: which risk lenses are present (security, data-migration, concurrency, api-contract, performance, ui, build-release, correctness); which of these repo invariants fall in the blast radius [${invariants.map(i => i.name).join(', ') || 'none defined'}]; which of these roster roles should review it [${roster.map(r => r.name).join(', ') || 'none defined'}]. Resolve the diff with the repo's VCS yourself (target: ${target}, base: ${base || 'merge-base with default branch'}).`,
     evidence: 'Base the shape and every lens on hunks you actually read.',
+    fullProfile: true,   // synthesis: the cartographer maps the whole change — give it the full profile
   }),
   { schema: SHAPE_SCHEMA, phase: 'Shape', label: 'shape-map', ...compute('Shape') }
 )
