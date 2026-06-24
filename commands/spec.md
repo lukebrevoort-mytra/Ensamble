@@ -44,16 +44,24 @@ with `args` =
 Let the script own scoping, the parallel explorers, the draft, and the critique.
 
 ## 5 — Render the spec & hand off
-The workflow returns `{ spec, critique, areasExplored, unknowns, scale }`. Render the
-**CONTRACT §6 report** with the **spec as the body section** (problem · testable
-acceptance criteria · affected areas + blast radius · approach · test strategy ·
-risks · open questions · invariants & mandatory requirements it touches). Fold the
-`critique` gaps into *Open questions*/*Risks*; if `critique.verdict` is `needs-work`,
-say so and list what to resolve before building. If the workflow returns `{error}`,
-surface it and recommend the fix.
+The workflow returns `{ spec, critique, areasExplored, unknowns, scale }`. Once it's
+done, render two things:
+1. **In chat — the CONTRACT §6 report** with the **spec as the body section** (problem
+   · testable acceptance criteria · affected areas + blast radius · approach · test
+   strategy · risks · open questions · invariants & mandatory requirements it touches).
+   Fold the `critique` gaps into *Open questions*/*Risks*; if `critique.verdict` is
+   `needs-work`, say so and list what to resolve before building. If the workflow
+   returns `{error}`, surface it and recommend the fix (skip the artifact).
+2. **A visual artifact** — render the spec into a self-contained HTML page via the
+   **Artifact tool** (load the `artifact-design` skill / house style: Fraunces +
+   Spline Sans, warm neutrals, one terracotta accent, render-on-first-paint, no
+   external assets). Lay it out as a readable spec sheet: the problem up top, the
+   **testable acceptance criteria as a checklist**, then approach · test strategy ·
+   affected areas + blast radius · risks · open questions, with `critique.verdict` as a
+   banner (ready / needs-work) and the unknowns called out. Give its URL to the user.
 
-Save to `.workflows/spec-<slug>.md` and **also print inline**. End with the
-recommended next action — usually `/execute .workflows/spec-<slug>.md`, or the open
+Save the §6 report to `.workflows/spec-<slug>.md` and **also print inline**. End with
+the recommended next action — usually `/execute .workflows/spec-<slug>.md`, or the open
 questions that must be answered first. Do not start implementing.
 
 Request (idea / ticket / text, optional `quick`/`thorough`): $ARGUMENTS
