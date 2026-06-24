@@ -56,7 +56,7 @@ review) · `node` (only for the optional script validator).
 
 ```sh
 # clone anywhere — the installer finds itself relative to this checkout
-git clone <ensemble-repo-url> ~/.claude/ensemble
+git clone (https://github.com/lukebrevoort-mytra/Ensamble/ ~/.claude/ensemble
 
 # make /ensemble-install and /ensemble-update available in every repo
 ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
