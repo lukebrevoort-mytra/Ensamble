@@ -25,7 +25,7 @@ const scaleArg   = (A && A.scale)       || 'auto'
 const agentTypes = (A && A.agentTypes)  || {}
 const explorer   = agentTypes.explorer || 'Explore'
 
-const scale = scaleArg
+const scale = scaleArg === 'audit' ? 'thorough' : scaleArg   // 'audit' = the heaviest pass (CONTRACT §4.6)
 const AREA_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 8 : 4
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
 
@@ -44,6 +44,9 @@ function compute(phaseName) {
   if (pol.model) out.model = pol.model           // model only when the profile pins it
   return out
 }
+// A phasePolicy keyed to a phase that doesn't exist would otherwise be dropped in
+// silence — surface the typo/drift instead of ignoring it.
+Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePolicy key "${k}" matches no phase (expected: ${Object.keys(DEFAULT_TIER).join(', ')}) — ignored.`) })
 
 // Standard brief (CONTRACT §4.3) — no naked subagents: each orients on repo context,
 // finds patterns to mirror, and knows the repo's tools.
