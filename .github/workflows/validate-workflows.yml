@@ -1,0 +1,36 @@
+name: Validate workflows
+
+# Guards the native Workflow scripts in workflows/ on every PR and push to main:
+#   1. tools/validate-workflows.mjs — each script parses and respects the sandbox
+#      rules (no fs/Date.now()/Math.random()/require/process; meta literal present).
+#   2. tools/validate-workflows.test.mjs — the validator's own unit tests.
+# No dependencies to install — this is a plain Node repo (no package.json).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate workflow scripts (parse + sandbox rules)
+        run: node tools/validate-workflows.mjs
+
+      - name: Run validator unit tests
+        run: node --test tools/validate-workflows.test.mjs
