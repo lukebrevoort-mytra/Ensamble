@@ -41,7 +41,7 @@ const outOfScope   = (A && A.outOfScope)    || ''            // known / intentio
 const sizeScale = changedFiles.length <= 3 ? 'quick'
                 : changedFiles.length >= 20 ? 'thorough'
                 : 'auto'
-const scale = scaleArg === 'auto' ? sizeScale : scaleArg
+const scale = scaleArg === 'audit' ? 'thorough' : scaleArg === 'auto' ? sizeScale : scaleArg
 const VERIFY_VOTES = scale === 'thorough' ? 3 : 1                  // perspective-diverse panel when thorough
 const LENS_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 12 : 6
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
@@ -63,6 +63,9 @@ function compute(phaseName) {
   if (pol.model) out.model = pol.model           // model only when the profile pins it
   return out
 }
+// A phasePolicy keyed to a phase that doesn't exist (e.g. the old "triage" name, now
+// "shape") would otherwise be dropped in silence — surface the drift instead.
+Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePolicy key "${k}" matches no phase (expected: ${Object.keys(DEFAULT_TIER).join(', ')}) — ignored.`) })
 
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
 // subagent is "naked": each re-orients on repo context, knows its tools, and

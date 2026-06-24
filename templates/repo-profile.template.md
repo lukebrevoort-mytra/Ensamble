@@ -108,7 +108,7 @@ reasoning phases high, model = the session model). Set `effort` to retune a phas
 pin `model` **only** when this repo genuinely needs a specific tier for a phase
 (otherwise it's inherited — pinning model names is brittle). Phases by workflow:
 `spec` → scope · gather · draft · critique; `execute` → plan · implement · verify ·
-checks; `review` → triage · review · verify · checks. Machine-read as
+checks; `review` → shape · review · verify · checks. Machine-read as
 `phasePolicy: {phase: {effort, model}}` — keep the field names exact.
 - **<phase>** — `effort:` <low|medium|high|xhigh|max> — `model:` <optional: haiku|sonnet|opus|fable>
   - e.g. **gather** — effort: low   (huge codebase; broad sweeps should stay cheap)

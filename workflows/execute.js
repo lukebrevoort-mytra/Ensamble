@@ -27,7 +27,7 @@ const agentTypes = (A && A.agentTypes)  || {}
 const coderType    = agentTypes.coder    || 'general-purpose'
 const verifierType = agentTypes.verifier || 'general-purpose'  // 'verifier' if the repo has it
 
-const scale = scaleArg
+const scale = scaleArg === 'audit' ? 'thorough' : scaleArg   // 'audit' = the heaviest pass (CONTRACT §4.6)
 const MAX_ROUNDS = scale === 'quick' ? 2 : scale === 'thorough' ? 4 : 3
 // Implementation is expensive — keep a larger reserve so the final checks always run.
 const budgetOk = () => !budget.total || budget.remaining() > 60_000
@@ -48,6 +48,9 @@ function compute(phaseName) {
   if (pol.model) out.model = pol.model           // model only when the profile pins it
   return out
 }
+// A phasePolicy keyed to a phase that doesn't exist would otherwise be dropped in
+// silence — surface the typo/drift instead of ignoring it.
+Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePolicy key "${k}" matches no phase (expected: ${Object.keys(DEFAULT_TIER).join(', ')}) — ignored.`) })
 
 function mandatoryLine() {
   return mandatory.length
