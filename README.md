@@ -10,7 +10,7 @@ decisions. Orchestrated agents; human-owned calls.
 
 ```
 /spec     idea     →  an implementation-ready spec, grounded in your code
-/execute  spec     →  built, looping until every criterion is proven
+/execute  spec     →  you lock "done", the loop builds until every criterion is proven
 /review   pr|branch →  the change mapped, the calls yours to make
 ```
 
@@ -39,7 +39,7 @@ built on three principles that keep it grounded and keep you involved:
 | Command | Phases | You get |
 |---|---|---|
 | **`/spec`** | Scope → Gather (parallel explorers) → Draft → adversarial Critique | An implementation-ready spec with testable criteria, anchored to real code |
-| **`/execute`** | Plan → **Implement ⇄ Verify loop** → Checks | Working code; the loop won't stop until criteria **and** your repo's mandatory evidence (e.g. a passing test, a UI screenshot) exist |
+| **`/execute`** | Lock criteria with you → Plan → **Implement ⇄ independent Verify loop** → Checks | Working code. You confirm the passing criteria once up front; the loop runs autonomously to them (looping while it makes progress, not for a fixed count) and exits **complete / needs-you / blocked** — it won't report done until every criterion **and** your repo's mandatory evidence (a passing test, a UI screenshot) are proven |
 | **`/review`** | Shape → Review → Verify → Checks | A Change Map (chat + visual artifact), findings tagged bug / judgment / intent-question, and a verdict **you** set |
 
 All three **scale to the work** — a tiny change spawns a couple of agents; "audit this

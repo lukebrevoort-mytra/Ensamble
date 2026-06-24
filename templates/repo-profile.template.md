@@ -21,6 +21,19 @@ proves it. The workflows treat these as **automatic acceptance criteria** for an
 change in their blast radius, and `/review` weights them by default.
 - **<invariant>** — proven by: `<test/command>` — applies when: <which paths>
 
+## Essential success tests — the ground-truth "did it work?" signals
+The *existing* suites/tests/checks this repo treats as the **trusted signal that a
+change actually succeeded**, each with when it applies. `/execute` assembles the
+applicable ones into the **locked passing criteria** it confirms with you before the
+loop runs (CONTRACT §4.8), so the loop can't declare done without them — this is how
+the user guarantees the loop picks up the tests they care about, rather than relying on
+the agent to infer them. Distinct from invariants (properties that never regress) and
+mandatory requirements (process/evidence gates): these are the positive acceptance
+signals. **Machine-read as `essentialTests: [{test, appliesWhen}]` — keep fields exact.**
+- **<test/suite/command>** — `appliesWhen:` <which changes this is the success signal for>
+  - e.g. **`pnpm test -- checkout/`** — appliesWhen: any change under `web/checkout/`.
+  - e.g. **the planner sim scenario suite** — appliesWhen: changes to routing/planning.
+
 ## Mandatory requirements — the user's install-time gates
 What this repo treats as **non-negotiable** for a change, decided by the user during
 `/ensemble-install` and enforced as hard gates by the workflows (CONTRACT §4.8). Not

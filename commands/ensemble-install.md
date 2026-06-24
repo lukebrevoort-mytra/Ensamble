@@ -73,6 +73,15 @@ Using what recon found as a starting point, interview the user with
 useful* — ask only what you couldn't confidently detect, and offer your detected
 values as the default option:
    - the canonical commands you're unsure about (esp. single/scoped test runs);
+   - **Essential success tests** (high value — this seeds `/execute`'s criteria lock):
+     which *existing* suites/tests/checks the user treats as the **ground-truth signal
+     that a change actually succeeded** (not just "tests exist"), and **when each
+     applies**. The agents can infer acceptance criteria from a spec, but they can miss
+     the one suite the user most trusts — asking here guarantees `/execute` assembles it
+     into the locked "done" contract every run. Record as `essentialTests: [{test,
+     appliesWhen}]`. Distinct from invariants (properties that never regress) and from
+     mandatory requirements (process/evidence gates): these are the positive
+     "did it work?" signals. Surface your best guesses and let the user confirm/add.
    - **test/simulation/fixture harnesses** the agents should drive;
    - **MCP servers / local services** connected to this repo and when agents may
      use them (DB, browser, issue tracker, docs) — this is what makes the agents
@@ -101,8 +110,9 @@ values as the default option:
 **6 — Write the profile.** Populate `<repo>/.claude/ensemble/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected
 + confirmed values. The **Repo character**, **Invariants & gate tests**,
-**Mandatory requirements**, **Specialist roster**, and **Execution mode** sections
-are mandatory — a profile without them is just a command list and defeats the purpose.
+**Essential success tests**, **Mandatory requirements**, **Specialist roster**, and
+**Execution mode** sections are mandatory — a profile without them is just a command
+list and defeats the purpose.
 Mark anything still unverified with `~`. This file is committed and human-maintained.
 
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
