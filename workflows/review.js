@@ -42,8 +42,14 @@ const sizeScale = changedFiles.length <= 3 ? 'quick'
                 : changedFiles.length >= 20 ? 'thorough'
                 : 'auto'
 const scale = scaleArg === 'audit' ? 'thorough' : scaleArg === 'auto' ? sizeScale : scaleArg
-const VERIFY_VOTES = scale === 'thorough' ? 3 : 1                  // perspective-diverse panel when thorough
-const LENS_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 12 : 6
+// Cost mode (CONTRACT §4.6) — an orthogonal $ dial over `scale`. `scale` decides how
+// MUCH to look (thoroughness); `costMode` decides how much to SPEND doing it. It shifts
+// the per-agent effort (below) and the discretionary fan-out caps.
+const costMode = (A && A.costMode) || 'balanced'                   // 'eco' | 'balanced' | 'max'
+const VERIFY_VOTES = (scale === 'thorough' ? 3 : 1) + (costMode === 'max' ? 2 : 0)  // panel CEILING (the ladder only spends it when needed)
+let LENS_CAP = scale === 'quick' ? 2 : scale === 'thorough' ? 12 : 6
+if (costMode === 'eco') LENS_CAP = Math.max(1, Math.ceil(LENS_CAP / 2))
+else if (costMode === 'max') LENS_CAP += 2
 const budgetOk = () => !budget.total || budget.remaining() > 40_000
 
 // Per-phase compute (CONTRACT §4.9) — effort-first tiering. The built-in defaults
@@ -53,12 +59,20 @@ const budgetOk = () => !budget.total || budget.remaining() > 40_000
 // absent → inherit the session model).
 const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
 const DEFAULT_TIER = { shape: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+// Cost mode shifts the DEFAULT effort one rung (eco down / max up); an explicit profile
+// pin always wins (the repo's deliberate choice beats a per-run dial — mirrors model pinning).
+const EFFORT_LADDER = ['low', 'medium', 'high', 'xhigh', 'max']
+const COST_DELTA = costMode === 'eco' ? -1 : costMode === 'max' ? 1 : 0
+function shiftEffort(e) {
+  const i = EFFORT_LADDER.indexOf(e)
+  return i < 0 ? e : EFFORT_LADDER[Math.max(0, Math.min(EFFORT_LADDER.length - 1, i + COST_DELTA))]
+}
 function compute(phaseName) {
   const k = phaseName.toLowerCase()
   const pol = phasePolicy[k] || {}
   const def = DEFAULT_TIER[k] || {}
   const out = {}
-  const effort = pol.effort || def.effort        // effort-first: relative, survives model swaps
+  const effort = pol.effort || shiftEffort(def.effort)  // pin wins; else default shifted by the cost dial
   if (effort) out.effort = effort
   if (pol.model) out.model = pol.model           // model only when the profile pins it
   return out
@@ -70,30 +84,37 @@ Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePoli
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
 // subagent is "naked": each re-orients on repo context, knows its tools, and
 // honors what the human told us at intake. ───────────────────────────────────
-function brief({ role, scope, question, evidence, schemaNote }) {
+// Ordering matters (CONTRACT §4.3): the STATIC preamble (profile, recon, tools, the
+// human's run-wide context, evidence discipline) is byte-identical across every agent
+// this run, so it forms a stable prefix any prompt-prefix cache can reuse. All PER-AGENT
+// text (role, scope, the upstream Change Map, the job) lives BELOW the ─── delimiter.
+function brief({ role, scope, question, evidence, schemaNote, context }) {
   return [
+    // ── STATIC PREAMBLE — same for all agents this run (cacheable prefix) ──────────
+    profile
+      ? `## Repo profile — ground truth (commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>`
+      : `## No repo-profile.md exists\nDetect conventions from neighbouring files before asserting anything.`,
+    recon ? `## Cached recon (stack / layout / commands)\n<recon>\n${recon}\n</recon>` : ``,
+    repoTools.length
+      ? `## Use this repo's tools\nFor real evidence (not guesses) you may use: ${repoTools.join(', ')}. Load any you need with ToolSearch ("select:<name>") before calling it.`
+      : ``,
+    (intent || focus || outOfScope)
+      ? `## What the human told us (honor this for the whole review)\n${intent ? `- Intent of the change: ${intent}\n` : ''}${focus ? `- Focus especially on: ${focus}\n` : ''}${outOfScope ? `- Out of scope / intentional — do NOT flag these: ${outOfScope}` : ''}`
+      : ``,
+    `## Evidence discipline (CONTRACT §3)\nTag every claim FACT ✓ (cite file:line or command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. A claim without evidence is a QUESTION, not a FACT.`,
+    // ── PER-AGENT — varies, so it sits after the cacheable prefix ──────────────────
+    `\n────────────────────────────────────────`,
     `You are a ${role} reviewing a code change in THIS repository. Be skeptical and concrete.`,
     ``,
     `## Orient first (do not skip)`,
     `- Read the in-scope files end-to-end: ${scope || '(resolve from the diff)'}`,
     `- Read the actual diff hunks for them: \`git diff ${base || '<merge-base>'} -- <files>\` (or \`gh pr diff\` for a PR target: ${target}).`,
-    profile
-      ? `- Repo profile = ground truth (commands, invariants, conventions, "done" bar):\n<profile>\n${profile}\n</profile>`
-      : `- No repo-profile.md exists; detect conventions from neighbouring files before asserting anything.`,
-    recon ? `- Cached recon (stack/layout/commands):\n<recon>\n${recon}\n</recon>` : ``,
-    repoTools.length
-      ? `\n## Use this repo's tools\nFor real evidence (not guesses) you may use: ${repoTools.join(', ')}. Load any you need with ToolSearch ("select:<name>") before calling it.`
-      : ``,
-    (intent || focus || outOfScope)
-      ? `\n## What the human told us (honor this)\n${intent ? `- Intent of the change: ${intent}\n` : ''}${focus ? `- Focus especially on: ${focus}\n` : ''}${outOfScope ? `- Out of scope / intentional — do NOT flag these: ${outOfScope}` : ''}`
-      : ``,
+    context ? `\n## Change Map (already derived upstream — reuse it, don't re-map the whole change)\n${context}` : ``,
     ``,
     `## Your single job`,
     question,
-    ``,
-    `## Evidence discipline (CONTRACT §3)`,
-    `Tag claims FACT ✓ (cite file:line or command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. ${evidence || ''}`,
-    schemaNote || `Return ONLY the object the schema requires — it is data for the orchestrator, not a message to a human.`,
+    evidence ? `\n## For this job specifically\n${evidence}` : ``,
+    schemaNote || `\nReturn ONLY the object the schema requires — it is data for the orchestrator, not a message to a human.`,
   ].filter(Boolean).join('\n')
 }
 
@@ -101,7 +122,14 @@ function brief({ role, scope, question, evidence, schemaNote }) {
 // SHAPE = the change map (comprehension) + risk triage, in one pass.
 const SHAPE_SCHEMA = {
   type: 'object',
-  required: ['intent', 'structure', 'narrative', 'subsystems', 'lenses', 'invariantsInBlastRadius', 'rosterToSpawn'],
+  // Keep the required set MINIMAL — only the lightweight routing signal the script truly
+  // needs. The heavy comprehension fields (structure/narrative/hotspots/relationships/
+  // subsystems/invariantsInBlastRadius) are best-effort: every consumer already defaults
+  // them (`risk.structure || []`). An over-strict required set turns a 95%-complete map
+  // into a hard StructuredOutput failure that aborts the WHOLE review — observed on a
+  // 754-line diff, where the agent dropped `structure`, then `narrative`, blowing the
+  // retry cap (5). Require only what routing can't proceed without.
+  required: ['intent', 'lenses', 'rosterToSpawn'],
   properties: {
     // comprehension — the "shape" the human needs to feel oriented
     intent: { type: 'string', description: 'what this change does and why, in repo terms — one short paragraph' },
@@ -178,7 +206,7 @@ const GENERIC_LENS = {
 }
 
 if (!(A && A.reviewerRole)) log('No reviewerRole in args — intake likely skipped (direct scriptPath invocation?); assuming "reviewer" framing.')
-log(`Reviewing ${target} as ${reviewerRole} — ${changedFiles.length} changed file(s), scale=${scale}`)
+log(`Reviewing ${target} as ${reviewerRole} — ${changedFiles.length} changed file(s), scale=${scale}, cost=${costMode}`)
 
 // ── Phase 1: Shape — read the change as a whole: what it does, how it's built,
 // how to read it, where the risk is, and which lenses/roster to spawn. This is
@@ -194,6 +222,16 @@ const risk = await agent(
   { schema: SHAPE_SCHEMA, phase: 'Shape', label: 'shape-map', ...compute('Shape') }
 )
 if (!risk) return { error: 'Shape mapping failed — could not read the diff. Re-run /review or confirm the target resolves to a real diff.' }
+
+// Reuse the Shape map downstream (CONTRACT §4.3 — context threading): the cartographer
+// already read the whole change, so hand its map to every lens/verifier instead of
+// making each cold-read and re-derive it. Small to inject; the reading was already paid.
+const changeMap = [
+  risk.intent ? `Intent: ${risk.intent}` : ``,
+  (risk.structure || []).length ? `Structure: ${risk.structure.map(s => `${s.group} → [${(s.files || []).join(', ')}]`).join('  ·  ')}` : ``,
+  (risk.narrative || []).length ? `Reading order: ${risk.narrative.map((n, i) => `${i + 1}. ${n.step}${n.where ? ` (${n.where})` : ''}`).join('  →  ')}` : ``,
+  (risk.hotspots || []).length ? `Hotspots: ${risk.hotspots.map(h => `${h.where}${h.why ? ` — ${h.why}` : ''}`).join('; ')}` : ``,
+].filter(Boolean).join('\n')
 
 // ── Build the review job list: matched roster roles (by their real agentType)
 // first (CONTRACT §4.5), then generic lenses to cover what the roster misses. ──
@@ -212,6 +250,10 @@ if (jobs.length > LENS_CAP) {
 }
 if (!jobs.length) jobs = [{ key: 'correctness', role: GENERIC_LENS.correctness, agentType: 'general-purpose', scope: changedFiles.join(', ') }]
 
+// Ladder instrumentation: count bugs that hit verify and how many escalated to a full
+// panel, so the return can report what the escalation ladder saved vs old always-panel.
+let _verifyBugs = 0, _verifyEscalated = 0
+
 // ── Verification (CONTRACT §4.6): objective bugs get adversarially refuted to drop
 // false positives. Judgment calls & intent-questions are NOT refuted — they are
 // opinions/questions for the human, so they pass straight through to adjudication.
@@ -229,23 +271,35 @@ async function verifyFindings(found, job) {
     return [...forHuman, ...bugs.map(f => ({ ...f, verified: false, verifyVotes: 0 }))]
   }
   const PANEL = ['correctness', 'security/impact', 'does-it-actually-reproduce'] // perspective-diverse lenses
-  const verifiedBugs = await parallel(bugs.map(f => () =>
-    parallel(Array.from({ length: VERIFY_VOTES }, (_, k) => () =>
-      agent(
-        brief({
-          role: `skeptical verifier (${VERIFY_VOTES > 1 ? PANEL[k % PANEL.length] : 'refutation'} lens)`,
-          scope: f.file,
-          question: `Try to REFUTE this claimed bug: "${f.title}" at ${f.file}:${f.line == null ? '?' : f.line} — ${f.why}. Read the code and the diff yourself. Default to refuted=true if you cannot independently confirm it is a real problem in this repo's context.`,
-          evidence: 'Confirm or refute from the actual code, not plausibility.',
-        }),
-        { schema: VERDICT_SCHEMA, phase: 'Verify', label: `verify:${f.file}`, ...compute('Verify') }
-      )
-    )).then(votes => {
-      const live = votes.filter(Boolean)
-      const survives = live.length > 0 && live.filter(v => !v.refuted).length >= Math.ceil(live.length / 2)
-      return survives ? { ...f, verified: true, verifyVotes: live.length } : null
-    })
-  )).then(rs => rs.filter(Boolean))
+  const verifyVote = (f, lens) => agent(
+    brief({
+      role: `skeptical verifier (${lens} lens)`,
+      scope: f.file,
+      question: `Try to REFUTE this claimed bug: "${f.title}" at ${f.file}:${f.line == null ? '?' : f.line} — ${f.why}. Read the code and the diff yourself. Default to refuted=true if you cannot independently confirm it is a real problem in this repo's context.`,
+      evidence: 'Confirm or refute from the actual code, not plausibility.',
+      context: changeMap,
+    }),
+    { schema: VERDICT_SCHEMA, phase: 'Verify', label: `verify:${f.file}`, ...compute('Verify') }
+  )
+  // Escalation ladder (CONTRACT §4.6): one vote first. A CONFIDENT refutation drops the
+  // finding cheaply (it's noise) — no panel. Anything else (it survives, or the vote is
+  // low/med confidence) earns the full perspective-diverse panel before we report it. So
+  // we only spend the extra votes on findings that actually warrant scrutiny. eco never
+  // escalates (one vote, period); max always convenes the full panel.
+  const verifiedBugs = (await parallel(bugs.map(f => async () => {
+    _verifyBugs++
+    const first = await verifyVote(f, VERIFY_VOTES > 1 ? PANEL[0] : 'refutation')
+    let live = [first].filter(Boolean)
+    const confidentlyRefuted = first && first.refuted && first.confidence === 'high'
+    const wantPanel = VERIFY_VOTES > 1 && costMode !== 'eco' && (costMode === 'max' || !confidentlyRefuted)
+    if (wantPanel) {
+      _verifyEscalated++
+      const rest = await parallel(Array.from({ length: VERIFY_VOTES - 1 }, (_, k) => () => verifyVote(f, PANEL[(k + 1) % PANEL.length])))
+      live = [...live, ...rest.filter(Boolean)]
+    }
+    const survives = live.length > 0 && live.filter(v => !v.refuted).length >= Math.ceil(live.length / 2)
+    return survives ? { ...f, verified: true, verifyVotes: live.length } : null
+  }))).filter(Boolean)
   return [...forHuman, ...verifiedBugs]
 }
 
@@ -298,6 +352,7 @@ const [reviewedNested, checkResults, reqResults] = await parallel([
         scope: job.scope,
         question: `Review ONLY your lens on the changed files. For EACH finding give file:line, severity, and \`kind\`: "bug" (an objective defect), "judgment" (a call a human should make — structure, naming, risk appetite, alternative design), or "intent-question" (you need the author to confirm intent before it is even a problem). For judgment & intent-question findings, fill \`decision\` with a crisp \`question\` for the human, 2–4 \`options\`, and your \`recommendation\`, and set \`needsDecision\` true (also set it true for high/med bugs). Add \`suggestedFix\` for bugs.${job.owns ? ' You also own these checks: ' + job.owns + ' — note whether they pass.' : ''} The reader is the change's ${reviewerRole === 'author' ? 'AUTHOR — frame findings as what a reviewer will flag and where their intent matters' : 'REVIEWER deciding whether to merge — frame findings to support that decision'}. If your lens turns up nothing real, return an empty findings array — do not invent issues to look busy.`,
         evidence: 'A "finding" without a file:line and a concrete failure mode is an Open question, not a finding. Never flag anything the human marked out-of-scope / intentional.',
+        context: changeMap,
       }),
       { schema: FINDINGS_SCHEMA, phase: 'Review', agentType: job.agentType, label: `review:${job.key}`, ...compute('Review') }
     ),
@@ -329,9 +384,24 @@ else verdictSuggested = 'APPROVE'
 
 log(`Done — ${bugs.length} bug(s), ${decisions.length} decision(s) for the human, ${unmetReqs.length + blockedReqs.length} unmet requirement(s); suggested verdict: ${verdictSuggested}`)
 
+// What the escalation ladder (§4.6) actually saved vs the old always-N-vote panel, on
+// THIS run's real bug set (a deterministic counterfactual — no second run needed).
+const verifyStats = {
+  votesPerBug: VERIFY_VOTES,
+  bugsVerified: _verifyBugs,
+  escalatedToPanel: _verifyEscalated,
+  shortCircuited: _verifyBugs - _verifyEscalated,
+  verifyAgentsRun: _verifyBugs + _verifyEscalated * (VERIFY_VOTES - 1),
+  verifyAgentsOldWay: _verifyBugs * VERIFY_VOTES,
+}
+verifyStats.agentsSaved = verifyStats.verifyAgentsOldWay - verifyStats.verifyAgentsRun
+log(`Ladder: ${verifyStats.bugsVerified} bug(s), ${verifyStats.escalatedToPanel} escalated → ${verifyStats.verifyAgentsRun} verify agents vs ${verifyStats.verifyAgentsOldWay} old-way (saved ${verifyStats.agentsSaved})`)
+
 return {
   target,
   scale,
+  costMode,
+  verifyStats,
   reviewerRole,
   verdictSuggested,
   shape: {

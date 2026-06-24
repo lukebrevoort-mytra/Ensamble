@@ -66,10 +66,15 @@ Always launch a workflow; scale fan-out to diff size and the user's token target
 
 - `changedFiles ≤ 3` → `quick` (≤2 lenses, single-vote verify)
 - `4–19` → `auto` (≤6 lenses)
-- `≥ 20` or user says "thorough/audit" → `thorough` (≤12 lenses, 3-vote
-  perspective-diverse verify panel)
+- `≥ 20` or user says "thorough/audit" → `thorough` (≤12 lenses, up to a 3-vote
+  perspective-diverse verify panel — now *laddered*: see cost mode)
 - A `budget.total` (the user's "+Nk" directive) is a hard ceiling; checks/verify
   degrade gracefully and `log()` what was dropped (no silent truncation).
+- **Cost mode** (`eco`/`balanced`/`max`, `args.costMode`) is an orthogonal $ dial over
+  scale: it shifts per-agent effort one rung and the discretionary caps, and gates the
+  **verify escalation ladder** (1 vote → full panel only when a finding isn't
+  *confidently* refuted, so the panel is spent only on contested findings). `/execute`
+  applies it to effort only — never to the convergence loop. See CONTRACT §4.6.
 
 ## Mandatory requirements — how "change the workflow per repo" actually works (resolved)
 

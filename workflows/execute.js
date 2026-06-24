@@ -33,6 +33,10 @@ const scale = scaleArg === 'audit' ? 'thorough' : scaleArg   // 'audit' = the he
 // stuck-detector (a round that closes nothing new and repeats the same feedback) —
 // well before this cap. It survives so a pathological oscillation can't run unbounded.
 const MAX_ROUNDS = scale === 'quick' ? 3 : scale === 'thorough' ? 6 : 5
+// Cost mode (CONTRACT §4.6) — orthogonal $ dial over `scale`. For /execute it shifts only
+// per-agent EFFORT (below); the loop's progress-based termination is untouched — cutting the
+// loop short to save money risks shipping unconverged code, the wrong place to economise.
+const costMode = (A && A.costMode) || 'balanced'             // 'eco' | 'balanced' | 'max'
 // Implementation is expensive — keep a larger reserve so the final checks always run.
 const budgetOk = () => !budget.total || budget.remaining() > 60_000
 
@@ -42,12 +46,20 @@ const budgetOk = () => !budget.total || budget.remaining() > 60_000
 // inherit the session model).
 const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
 const DEFAULT_TIER = { plan: { effort: 'high' }, implement: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+// Cost mode shifts the DEFAULT effort one rung (eco down / max up); an explicit profile
+// pin always wins (the repo's deliberate choice beats a per-run dial — mirrors model pinning).
+const EFFORT_LADDER = ['low', 'medium', 'high', 'xhigh', 'max']
+const COST_DELTA = costMode === 'eco' ? -1 : costMode === 'max' ? 1 : 0
+function shiftEffort(e) {
+  const i = EFFORT_LADDER.indexOf(e)
+  return i < 0 ? e : EFFORT_LADDER[Math.max(0, Math.min(EFFORT_LADDER.length - 1, i + COST_DELTA))]
+}
 function compute(phaseName) {
   const k = phaseName.toLowerCase()
   const pol = phasePolicy[k] || {}
   const def = DEFAULT_TIER[k] || {}
   const out = {}
-  const effort = pol.effort || def.effort        // effort-first: relative, survives model swaps
+  const effort = pol.effort || shiftEffort(def.effort)  // pin wins; else default shifted by the cost dial
   if (effort) out.effort = effort
   if (pol.model) out.model = pol.model           // model only when the profile pins it
   return out
@@ -63,22 +75,29 @@ function mandatoryLine() {
 }
 
 // Standard brief (CONTRACT §4.3) — no naked subagents.
-function brief({ role, scope, question, evidence, schemaNote }) {
+// Ordering: the STATIC preamble (profile, recon, tools, evidence discipline) is
+// byte-identical across every agent this run; per-agent text (role, scope, upstream
+// context, job) sits BELOW the ─── delimiter. (Measured caveat in CONTRACT §4.3: this is
+// clean structure, not a token saving in the current harness.)
+function brief({ role, scope, question, evidence, schemaNote, context }) {
   return [
+    // ── STATIC PREAMBLE — same for all agents this run ────────────────────────────
+    profile ? `## Repo profile — ground truth (canonical commands, invariants, conventions, "done" bar)\n<profile>\n${profile}\n</profile>` : `## No repo-profile.md exists\nDetect conventions from neighbouring files before changing anything.`,
+    recon ? `## Cached recon (stack / layout / commands)\n<recon>\n${recon}\n</recon>` : ``,
+    repoTools.length ? `## Repo tools\nUse these for real work/evidence (not guesses): ${repoTools.join(', ')}. Load any with ToolSearch ("select:<name>") before calling it.` : ``,
+    `## Evidence discipline (CONTRACT §3)\nTag every claim FACT ✓ (file:line / command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. A claim without evidence is a QUESTION, not a FACT.`,
+    // ── PER-AGENT — varies ────────────────────────────────────────────────────────
+    `\n────────────────────────────────────────`,
     `You are a ${role} working in THIS repository. Ground every claim in real code and command output.`,
     ``,
     `## Orient first (do not skip)`,
     `- Read the in-scope files end-to-end${scope ? `: ${scope}` : ''} and mirror neighbouring conventions.`,
-    profile ? `- Repo profile = ground truth (canonical commands, invariants, conventions, "done" bar):\n<profile>\n${profile}\n</profile>` : `- No repo-profile.md exists; detect conventions from neighbouring files before changing anything.`,
-    recon ? `- Cached recon (stack/layout/commands):\n<recon>\n${recon}\n</recon>` : ``,
-    repoTools.length ? `\n## Repo tools\nUse these for real work/evidence (not guesses): ${repoTools.join(', ')}. Load any with ToolSearch ("select:<name>") before calling it.` : ``,
+    context ? `\n## Already derived upstream (reuse it, don't re-derive)\n${context}` : ``,
     ``,
     `## Your single job`,
     question,
-    ``,
-    `## Evidence discipline (CONTRACT §3)`,
-    `Tag claims FACT ✓ (file:line / command output) / ASSUMPTION ~ / QUESTION ? / BLOCKED ⛔. ${evidence || ''}`,
-    schemaNote || `Return ONLY the object the schema requires — it is data for the orchestrator, not a message to a human.`,
+    evidence ? `\n## For this job specifically\n${evidence}` : ``,
+    schemaNote || `\nReturn ONLY the object the schema requires — it is data for the orchestrator, not a message to a human.`,
   ].filter(Boolean).join('\n')
 }
 
@@ -169,6 +188,9 @@ const plan = await agent(
 )
 if (!plan || !(plan.tasks || []).length) return { error: 'Could not decompose the spec into tasks.' }
 
+// Planner notes orient each implementer (CONTRACT §4.3) without re-deriving the rationale.
+const planContext = plan.notes ? `Planner notes: ${plan.notes}` : ''
+
 // The criteria the loop measures against: the locked set, or (fallback) the derived one.
 const effectiveCriteria = criteriaProvided ? criteria : ((plan.derivedCriteria) || [])
 const critById = {}
@@ -225,6 +247,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
           `After editing, run the scoped checks and capture real output as evidence.`,
         ].filter(Boolean).join('\n'),
         evidence: 'Report the actual files changed and the command output proving it works.',
+        context: planContext,
       }),
       { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}`, ...compute('Implement') }
     )
@@ -327,7 +350,7 @@ const [checks, reqResults] = await parallel([() => runChecks(), () => checkRequi
 const tasksOut = plan.tasks.map(t => {
   const e = ledger[t.id]
   return {
-    id: t.id, description: t.task.description, criterionIds: t.criterionIds || [], status: e.status, rounds: e.rounds,
+    id: t.id, description: t.description, criterionIds: t.criterionIds || [], status: e.status, rounds: e.rounds,
     evidence: (e.impl && e.impl.evidence) || '', testAdded: (e.impl && e.impl.testAdded) || '',
     blocker: e.blocker || '', lastFeedback: feedback[t.id] || '',
   }
@@ -387,6 +410,7 @@ log(`Exit: ${exitState} — ${done.length}/${plan.tasks.length} tasks done, ${cr
 
 return {
   scale,
+  costMode,
   exitState,
   converged: isComplete,        // kept for back-compat: true iff exitState === 'complete'
   stopReason,

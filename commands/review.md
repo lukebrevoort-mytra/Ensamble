@@ -37,13 +37,17 @@ Parse `$ARGUMENTS` (PR number/URL, branch, scale hint `quick`/`thorough`/`audit`
 empty = current branch). Get **base** = merge-base with the detected default branch
 (don't assume `main`), **changedFiles** (`git diff --name-only <base>...HEAD` or
 `gh pr diff --name-only`), **target** label, **scale** (`auto` unless told), and a
-short kebab **slug** (you may use the date; the script cannot).
+short kebab **slug** (you may use the date; the script cannot). Also parse a **cost
+hint** — `eco` or `max` → `costMode` (default `balanced`). `scale` is thoroughness
+(how much to look); `costMode` is spend (how hard to look) — they're orthogonal
+(CONTRACT §4.6): e.g. `thorough eco` = wide coverage, cheap effort + no verify panel
+unless a finding is contested.
 
 ## 5 — Launch the native workflow
 `Workflow({ name: "review", args })` (installed) or `Workflow({ scriptPath:
 "<KIT>/workflows/review.js", args })` (not yet installed), with `args` =
 ```
-{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, reviewerRole, focus, intent, outOfScope, scale, slug }
+{ profile, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, reviewerRole, focus, intent, outOfScope, scale, costMode, slug }
 ```
 Let it run — it maps the shape, fans out reviewers, tags findings `bug` /
 `judgment` / `intent-question`, adversarially verifies the bugs, and runs the checks.
@@ -100,4 +104,4 @@ link to the visual artifact.
 
 Review the code; do not fix it. If asked to fix, hand specific items to `/execute`.
 
-Target (PR number/URL, branch, optional `quick`/`thorough`, or empty for current branch): $ARGUMENTS
+Target (PR number/URL, branch, optional `quick`/`thorough` and/or `eco`/`max`, or empty for current branch): $ARGUMENTS

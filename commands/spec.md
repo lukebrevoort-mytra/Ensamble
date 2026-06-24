@@ -29,9 +29,11 @@ Keep the recon text (or a tight summary) to pass in.
 
 ## 3 — Resolve the request
 `$ARGUMENTS` is the idea/ticket/request, optionally with a scale hint
-(`quick`/`thorough`). If it's a ticket reference and an issue-tracker MCP is in
-`tools`, fetch the ticket body. Compute a short kebab `slug` for the artifact (you
-may use the date here — the *script* cannot).
+(`quick`/`thorough`) and/or a cost hint (`eco`/`max` → `costMode`, default
+`balanced`). `scale` sets thoroughness; `costMode` sets spend — orthogonal dials
+(CONTRACT §4.6). If it's a ticket reference and an issue-tracker MCP is in `tools`,
+fetch the ticket body. Compute a short kebab `slug` for the artifact (you may use the
+date here — the *script* cannot).
 
 ## 4 — Launch the native workflow
 Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
@@ -39,7 +41,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, slug }
+{ profile, recon, request, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug }
 ```
 Let the script own scoping, the parallel explorers, the draft, and the critique.
 
@@ -64,4 +66,4 @@ Save the §6 report to `.workflows/spec-<slug>.md` and **also print inline**. En
 the recommended next action — usually `/execute .workflows/spec-<slug>.md`, or the open
 questions that must be answered first. Do not start implementing.
 
-Request (idea / ticket / text, optional `quick`/`thorough`): $ARGUMENTS
+Request (idea / ticket / text, optional `quick`/`thorough` and/or `eco`/`max`): $ARGUMENTS

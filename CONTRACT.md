@@ -133,18 +133,38 @@ Static knowledge flows in via `args`; live evidence is gathered by the agents.
 ### 4.3 No naked subagents — the standard brief
 
 **Every `agent()` prompt is built through one shared `brief()` helper** so no agent
-starts blind. The brief always contains, in order:
+starts blind. The brief groups the STATIC context first (one block), then the
+PER-AGENT part after a delimiter.
 
-1. **Role** — the one specialist hat this agent wears.
-2. **Orient first** — read the in-scope files end-to-end and the actual diff/hunks;
-   plus the injected `profile` and `recon` as ground truth (or "no profile — detect
+> **Measured caveat — this ordering is structure, not a token saving (yet).** A probe
+> (`tools/cache-probe.js` + `tools/analyze-cache.mjs`) showed that in the current
+> harness sibling sub-agents share a prompt cache for the **system prompt + tool
+> defs only** — *never* for user-message content. So the `profile` is paid per-agent
+> regardless of where it sits; reordering does not move it into a shared cache.
+> Keep the ordering (it's clean and future-proofs against cross-sibling caching if it
+> lands), but the real cost levers are **fewer agents** (§4.6) and a **smaller
+> per-agent profile**, not prompt order. Re-run the probe when the harness changes.
+
+**Static preamble (identical all run → cacheable prefix):**
+1. **Repo profile** — injected `profile` as ground truth (or "no profile — detect
    conventions from neighbouring files" when absent).
-3. **Tools** — the repo tools/services/MCPs this agent should use for real evidence,
-   and that it must load them with `ToolSearch ("select:<name>")` before use (§4.4).
-4. **Single job** — the one narrow question it must answer.
-5. **Evidence discipline** — tag claims per §3; cite file:line; a claim without
-   evidence is a QUESTION, not a FACT.
-6. **Schema note** — return only the structured object; it is data, not a message.
+2. **Recon** — cached stack/layout/commands.
+3. **Tools** — the repo tools/services/MCPs to use for real evidence, loaded with
+   `ToolSearch ("select:<name>")` before use (§4.4).
+4. **Human context** (review) — what the human told us at intake (intent/focus/
+   out-of-scope), constant for the whole run.
+5. **Evidence discipline** — tag claims per §3; a claim without evidence is a
+   QUESTION, not a FACT.
+
+**Per-agent (varies → after the delimiter):**
+6. **Role** — the one specialist hat this agent wears.
+7. **Orient first** — read the in-scope files end-to-end and the actual diff/hunks.
+8. **Upstream context** (optional, `context` param) — a map an earlier phase already
+   produced (`/review`'s Change Map, `/spec`'s scope findings, `/execute`'s plan
+   notes), threaded in so the agent **reuses** it instead of re-deriving the whole
+   change. Reusing upstream work is the cheapest token saving there is.
+9. **Single job** — the one narrow question it must answer.
+10. **Schema note** — return only the structured object; it is data, not a message.
 
 ### 4.4 Tool-awareness rule
 
@@ -173,18 +193,31 @@ Use the generic lens table only to cover risk the roster misses:
 | Hard bug, murky root cause | deep-debug (`oracle`) |
 | Final acceptance gate | verifier (`verifier`) — checks, never fixes |
 
-### 4.6 Adaptive scale + budget
+### 4.6 Adaptive scale + cost mode + budget
 
-Always launch; **scale fan-out to the work**, not a fixed size:
+Three orthogonal dials decide what a run costs. Always launch; never fix the size.
 
-- Derive scale from task size (e.g. changed-file count) unless the user says
-  `quick`/`thorough`/`audit`.
-- A `quick` task spawns the minimum (1–2 lenses, single-vote verify); a `thorough`
-  one spawns the full roster + generic lenses + a 3-vote perspective-diverse verify
-  panel.
-- `budget.total` (the user's "+Nk" directive) is a **hard ceiling**. Gate expensive
-  stages on `budget.remaining()`, degrade gracefully, and `log()` anything dropped —
-  silent truncation reads as "covered everything" when it didn't.
+- **Scale — how much to look (thoroughness).** Derive from task size (e.g.
+  changed-file count) unless the user says `quick`/`thorough`/`audit`. A `quick` task
+  spawns the minimum (1–2 lenses); a `thorough` one spawns the full roster + generic
+  lenses + the verify panel.
+- **Cost mode — how much to spend looking.** `eco | balanced | max` (default
+  `balanced`), passed as `args.costMode`, orthogonal to scale. It shifts the per-agent
+  **effort** one rung (§4.9) and the discretionary **fan-out caps** (eco tightens, max
+  loosens). Where cheaping out risks correctness — e.g. `/execute`'s implement→verify
+  loop — cost mode touches effort only and never cuts the loop short.
+  `thorough eco` is valid and useful: wide coverage at low effort.
+- **Escalation ladder — spend the panel only where it's earned.** Verification runs
+  one vote first; a *confident refutation* drops a finding cheaply (it's noise), while
+  anything that survives or is low-confidence earns the full perspective-diverse panel
+  before it's reported. Panel-grade rigor on contested findings, no panel cost on
+  clear-cut ones. (`eco` never escalates; `max` always convenes the panel.) Measured at
+  `thorough`: saves `(votesPerBug−1) ×` the false-positive count — $0 on a clean diff,
+  up to the whole panel overhead on a noisy one.
+- **Budget — the hard ceiling.** `budget.total` (the user's "+Nk" directive) bounds
+  **output** tokens. Gate expensive stages on `budget.remaining()`, degrade
+  gracefully, and `log()` anything dropped — silent truncation reads as "covered
+  everything" when it didn't.
 
 ### 4.7 Structured output — the canonical schemas
 
@@ -267,7 +300,9 @@ per-phase **compute tier** on its `agent()` calls, with two dials:
   lever. It is *relative* to whatever model is running, so it survives model swaps
   and respects the session model the user chose. Built-in defaults drop mechanical
   phases (running checks) to `low` and raise hard-reasoning phases (triage, verify,
-  critique, plan) to `high`.
+  critique, plan) to `high`. The per-run `costMode` (§4.6) shifts these defaults one
+  rung up (`max`) or down (`eco`); an explicit `phasePolicy` effort pin always wins
+  over the dial — the repo's deliberate choice beats a per-run knob.
 - **`model`** (`haiku`/`sonnet`/`opus`/`fable`) — an **optional override**, pinned
   **only** by the repo profile and **only** when a repo genuinely warrants it (e.g. a
   safety-critical repo forcing `verify` stronger). Never defaulted: absent → inherit

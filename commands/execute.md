@@ -38,7 +38,10 @@ Load `.workflows/recon.md` if fresh; otherwise run CONTRACT §2 recon and cache 
 Resolve `$ARGUMENTS` to a spec: a path (e.g. `.workflows/spec-*.md`) → read it;
 pasted spec text → use it; a raw request with no spec → produce a lightweight inline
 spec first (problem + testable acceptance criteria + test strategy). Pass the spec
-text in as `spec`. Note where it came from — it sets how heavy §4 is.
+text in as `spec`. Note where it came from — it sets how heavy §4 is. Also parse an
+optional cost hint (`eco`/`max` → `costMode`, default `balanced`); for `/execute` it
+shifts per-agent effort only — the loop's progress-based termination is untouched
+(CONTRACT §4.6).
 
 ## 4 — Assemble, confirm, and LOCK the passing criteria (the one human touch)
 The loop is only as trustworthy as its exit condition, so **you lock "done" with the
@@ -82,7 +85,7 @@ Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
 
 with `args` =
 ```
-{ profile, recon, spec, criteria, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, slug, branch }
+{ profile, recon, spec, criteria, commands, roster, invariants, tools, mandatoryRequirements, agentTypes, phasePolicy, scale, costMode, slug, branch }
 ```
 `criteria` is the **locked** set from §4 — the loop decomposes against it, never
 re-authors it. Let the script own decomposition and the implement→verify→loop-back
@@ -126,4 +129,4 @@ Then branch on `exitState`:
 a failing check, a pending decision, or an unmet criterion means it is not done — say so.
 Save nothing unless asked; the branch + the printed ledger are the handoff.
 
-Spec or request (path, pasted spec, or raw text; optional `quick`/`thorough`): $ARGUMENTS
+Spec or request (path, pasted spec, or raw text; optional `quick`/`thorough` and/or `eco`/`max`): $ARGUMENTS
