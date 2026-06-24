@@ -58,9 +58,13 @@ review) · `node` (only for the optional script validator).
 # clone anywhere — the installer finds itself relative to this checkout
 git clone <ensemble-repo-url> ~/.claude/ensemble
 
-# make /ensemble-install available in every repo
+# make /ensemble-install and /ensemble-update available in every repo
 ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
+ln -sf ~/.claude/ensemble/commands/ensemble-update.md  ~/.claude/commands/ensemble-update.md
 ```
+
+> These are **symlinks** into your kit checkout, so `git pull` in `~/.claude/ensemble`
+> updates the installer/updater themselves with no extra step.
 
 ### 2. Install into a target repo *(once per repo)*
 
@@ -88,8 +92,22 @@ requirements**), and writes `.claude/ensemble/repo-profile.md`.
 /review   1234                                 # → reviews PR #1234
 ```
 
-Re-running `/ensemble-install` updates the portable layer (contract + commands +
-scripts) **without touching** your `repo-profile.md`.
+### Keep installs current
+
+When the kit improves, every repo that installed it is running an **older copy** of
+the portable layer until you re-sync — a bug fix or new capability in the kit doesn't
+reach a repo on its own. Pull the kit, then:
+
+```
+/ensemble-update                 # sync the current repo to the latest kit
+/ensemble-update --all           # sync every Ensemble install under ~/work (or pass a root)
+/ensemble-update --all --check   # dry-run: report which repos are stale, change nothing
+```
+
+It copies only the portable layer (contract + commands + scripts), **never touches**
+your `repo-profile.md`, diffs before writing, and validates the synced scripts. It's
+the light counterpart to `/ensemble-install` — no recon, no interview. (Re-running
+`/ensemble-install` also updates the portable layer, but re-runs the full retrofit.)
 
 ---
 

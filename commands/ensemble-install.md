@@ -118,7 +118,9 @@ Mark anything still unverified with `~`. This file is committed and human-mainta
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an
 open question. Tell the user they can now run `/spec`, `/execute`, `/review` in
-this repo, and that re-running `/ensemble-install` updates the portable layer
-without touching `repo-profile.md`.
+this repo, and that to pull later kit updates they can run **`/ensemble-update`**
+(the light path — re-syncs the portable layer, no interview; `--all` updates every
+install at once) or re-run `/ensemble-install` for a full retrofit — neither touches
+`repo-profile.md`.
 
 Optional argument (target repo path, if not the current directory): $ARGUMENTS
