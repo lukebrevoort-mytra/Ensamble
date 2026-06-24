@@ -59,6 +59,7 @@ review) · `node` (only for the optional script validator).
 git clone https://github.com/lukebrevoort-mytra/Ensamble ~/.claude/ensemble
 
 # make /ensemble-install and /ensemble-update available in every repo
+mkdir -p ~/.claude/commands   # ln won't create this dir; fresh machines may not have it
 ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
 ln -sf ~/.claude/ensemble/commands/ensemble-update.md  ~/.claude/commands/ensemble-update.md
 ```
