@@ -1,11 +1,11 @@
 export const meta = {
   name: 'execute',
-  description: 'Implement a spec adaptively (TDD where a test path exists), looping implement→verify until every acceptance criterion is met AND the repo\'s mandatory evidence is produced, then run the full gate checks',
+  description: 'Loop-engineering executor: run an autonomous implement↔verify loop against a LOCKED set of passing criteria, looping (independent verify) until every criterion is proven with evidence or the loop hands back to you — exits complete / needs-you / blocked',
   phases: [
-    { title: 'Plan', detail: 'decompose the spec into small, independently verifiable tasks' },
+    { title: 'Plan', detail: 'decompose the work into tasks, each mapped to a locked acceptance criterion (criteria are the immutable contract — not invented here)' },
     { title: 'Implement', detail: 'implement each open task (TDD when possible); sequential to avoid write conflicts' },
-    { title: 'Verify', detail: 'a verifier re-checks each task + its mandatory evidence; misses loop back to Implement' },
-    { title: 'Checks', detail: 'final canonical checks + invariant gate tests + mandatory-requirements gate' },
+    { title: 'Verify', detail: 'an INDEPENDENT verifier re-proves each criterion with evidence; misses loop back to Implement while progress is being made' },
+    { title: 'Checks', detail: 'final canonical checks + invariant gate tests + mandatory-evidence gate' },
   ],
 }
 
@@ -17,6 +17,7 @@ const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (ar
 const profile    = (A && A.profile)    || ''
 const recon      = (A && A.recon)       || ''
 const spec       = (A && A.spec)        || ''   // resolved spec text, passed by /execute
+const criteria   = (A && A.criteria)    || []   // LOCKED, human-confirmed passing criteria: [{id, criterion, verifyBy, source}] (CONTRACT §4.8)
 const commands   = (A && A.commands)    || {}
 const roster     = (A && A.roster)      || []
 const invariants = (A && A.invariants)  || []
@@ -28,7 +29,10 @@ const coderType    = agentTypes.coder    || 'general-purpose'
 const verifierType = agentTypes.verifier || 'general-purpose'  // 'verifier' if the repo has it
 
 const scale = scaleArg === 'audit' ? 'thorough' : scaleArg   // 'audit' = the heaviest pass (CONTRACT §4.6)
-const MAX_ROUNDS = scale === 'quick' ? 2 : scale === 'thorough' ? 4 : 3
+// MAX_ROUNDS is now a BACKSTOP only. The loop normally exits on convergence or the
+// stuck-detector (a round that closes nothing new and repeats the same feedback) —
+// well before this cap. It survives so a pathological oscillation can't run unbounded.
+const MAX_ROUNDS = scale === 'quick' ? 3 : scale === 'thorough' ? 6 : 5
 // Implementation is expensive — keep a larger reserve so the final checks always run.
 const budgetOk = () => !budget.total || budget.remaining() > 60_000
 
@@ -78,13 +82,20 @@ function brief({ role, scope, question, evidence, schemaNote }) {
   ].filter(Boolean).join('\n')
 }
 
+// Plan output: tasks each mapped to the criterion id(s) they advance. The criteria
+// themselves are NOT invented here when locked ones were passed in (§4.8); only the
+// degenerate "no locked criteria" path returns derivedCriteria (flagged downstream).
 const TASK_LEDGER_SCHEMA = {
   type: 'object', required: ['tasks'],
   properties: {
-    tasks: { type: 'array', items: { type: 'object', required: ['id', 'description', 'criterion'], properties: {
-      id: { type: 'string' }, description: { type: 'string' }, criterion: { type: 'string' },
+    tasks: { type: 'array', items: { type: 'object', required: ['id', 'description', 'criterionIds'], properties: {
+      id: { type: 'string' }, description: { type: 'string' },
+      criterionIds: { type: 'array', items: { type: 'string' } },  // which locked criteria this task advances
+      criterion: { type: 'string' },                               // optional human-readable restatement
       hasTestPath: { type: 'boolean' }, files: { type: 'array', items: { type: 'string' } },
       dependsOn: { type: 'array', items: { type: 'string' } } } } },
+    derivedCriteria: { type: 'array', items: { type: 'object', required: ['id', 'criterion'], properties: {
+      id: { type: 'string' }, criterion: { type: 'string' }, verifyBy: { type: 'string' } } } },
     notes: { type: 'string' },
   },
 }
@@ -94,13 +105,17 @@ const IMPL_SCHEMA = {
     taskId: { type: 'string' }, summary: { type: 'string' },
     filesChanged: { type: 'array', items: { type: 'string' } },
     testAdded: { type: 'string' }, evidence: { type: 'string' },
-    blocked: { type: 'boolean' }, blockerReason: { type: 'string' },
+    blocked: { type: 'boolean' },
+    blockerKind: { type: 'string', enum: ['external', 'decision'] },  // external=infra/creds/env wall; decision=needs a human choice
+    blockerReason: { type: 'string' },
   },
 }
 const TASK_VERDICT_SCHEMA = {
   type: 'object', required: ['taskId', 'satisfied', 'evidenceProduced'],
   properties: {
     taskId: { type: 'string' }, satisfied: { type: 'boolean' }, evidenceProduced: { type: 'boolean' },
+    needsHuman: { type: 'boolean' },        // criterion is ambiguous/underspecified — no implementation can settle it
+    humanQuestion: { type: 'string' },      // the exact decision the human must make
     missing: { type: 'string' }, feedback: { type: 'string' },
   },
 }
@@ -124,33 +139,72 @@ const REQUIREMENTS_SCHEMA = {
 
 if (!spec) return { error: 'No spec provided — /execute needs a spec path or text.' }
 
-// ── Phase 1: Plan — decompose into small, independently verifiable tasks. ─────
+// ── Phase 1: Plan — decompose into tasks mapped to the LOCKED criteria. ────────
+// The criteria are the immutable contract for this run; the planner consumes them,
+// it does not author them. Only the no-locked-criteria fallback derives a set.
+const criteriaProvided = criteria.length > 0
+const criteriaBlock = criteriaProvided
+  ? criteria.map(c => `- [${c.id}] ${c.criterion}${c.verifyBy ? ` (verify by: ${c.verifyBy})` : ''}${c.source ? `  ·source: ${c.source}` : ''}`).join('\n')
+  : '(none locked — derive a minimal testable set from the spec and FLAG that they were not human-confirmed)'
+
 phase('Plan')
 const plan = await agent(
   brief({
     role: 'implementation planner',
     scope: '',
-    question: `Decompose this spec into small, independently verifiable tasks, sequenced by dependency. For each: a stable id, what to do, the acceptance criterion it satisfies, whether a real test path exists (hasTestPath), and the files it touches. Spec:\n"""${spec}"""`,
-    evidence: 'Tasks must each map to a concrete, checkable criterion.',
+    question: [
+      criteriaProvided
+        ? `These passing criteria are LOCKED — the human confirmed them as the immutable definition of "done" for this run. Do NOT invent, broaden, or narrow them. Decompose the work into small, independently verifiable tasks so that, once all are done, EVERY locked criterion is satisfied. Map each task to the criterion id(s) it advances via criterionIds. Every locked criterion must be covered by at least one task — if one cannot be, flag it as a QUESTION in notes rather than silently dropping it.`
+        : `No locked criteria were provided. Derive a minimal set of testable acceptance criteria from the spec, return them in derivedCriteria with stable ids, and map every task to them via criterionIds. These were NOT human-confirmed — the orchestrator will flag that in the report.`,
+      ``,
+      `Locked criteria:\n${criteriaBlock}`,
+      ``,
+      `Spec / request:\n"""${spec}"""`,
+      ``,
+      `For each task: a stable id, what to do, the criterion id(s) it advances (criterionIds), whether a real test path exists (hasTestPath), and the files it touches. Sequence by dependency.`,
+    ].join('\n'),
+    evidence: 'Every criterion must map to ≥1 task; flag any criterion you cannot map as a QUESTION.',
   }),
   { schema: TASK_LEDGER_SCHEMA, phase: 'Plan', label: 'decompose', ...compute('Plan') }
 )
 if (!plan || !(plan.tasks || []).length) return { error: 'Could not decompose the spec into tasks.' }
 
+// The criteria the loop measures against: the locked set, or (fallback) the derived one.
+const effectiveCriteria = criteriaProvided ? criteria : ((plan.derivedCriteria) || [])
+const critById = {}
+effectiveCriteria.forEach(c => { critById[c.id] = { id: c.id, criterion: c.criterion, source: c.source || '', taskIds: [] } })
+plan.tasks.forEach(t => (t.criterionIds || []).forEach(cid => { if (critById[cid]) critById[cid].taskIds.push(t.id) }))
+function critText(t) {
+  const ids = t.criterionIds || []
+  const mapped = ids.map(cid => critById[cid] ? `[${cid}] ${critById[cid].criterion}` : cid).filter(Boolean)
+  return mapped.join('; ') || t.criterion || '(criterion unmapped)'
+}
+
 // ledger: id -> { task, status, rounds, impl, verdict, blocker }
+// status ∈ pending | done | blocked-external | needs-decision
 const ledger = {}
 plan.tasks.forEach(t => { ledger[t.id] = { task: t, status: 'pending', rounds: 0 } })
 const feedback = {}                 // taskId -> verifier feedback to feed the next implement attempt
+const decisions = []                // [{taskId, question, source}] — human questions surfaced by the loop
 let remaining = plan.tasks.slice()  // tasks not yet verified-done
 let round = 0
+let stuck = false
+
+const doneCount = () => plan.tasks.filter(t => ledger[t.id].status === 'done').length
 
 // ── Phases 2–3: the implement→verify loop. Implement runs SEQUENTIALLY (agents
 // mutate the same working tree; parallel writes would clobber each other), then
-// verify runs in PARALLEL (read-only-ish), and any unmet criterion or missing
-// mandatory evidence feeds back as feedback for the next round (CONTRACT §4.8).
-while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
+// verify runs in PARALLEL and INDEPENDENTLY (the verifier re-proves the criterion
+// rather than trusting the implementer — this is what makes the autonomous loop
+// trustworthy, CONTRACT §4.8). The loop continues while there is open work AND the
+// last round made PROGRESS — it stops the moment it stalls instead of grinding to
+// the cap (CONTRACT §4.8: progress-based termination, not a fixed round count).
+while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   round++
-  log(`Round ${round}/${MAX_ROUNDS}: implementing ${remaining.length} open task(s)`)
+  const doneBefore = doneCount()
+  const feedbackBefore = {}
+  remaining.forEach(t => { feedbackBefore[t.id] = feedback[t.id] || '' })
+  log(`Round ${round}: implementing ${remaining.length} open task(s)`)
 
   phase('Implement')
   for (const t of remaining) {
@@ -161,12 +215,13 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
         scope: (t.files || []).join(', '),
         question: [
           `Implement this task: ${t.description}`,
-          `It satisfies acceptance criterion: ${t.criterion}`,
+          `It advances acceptance criterion: ${critText(t)}`,
           t.hasTestPath
             ? `Use TDD: write a failing test encoding the criterion → implement the minimum to pass → confirm green → refactor.`
             : `No clean test path — add a characterization test or a runtime smoke check and note it BLOCKED ⛔ on TDD.`,
           mandatory.length ? `If any mandatory requirement applies to your files, PRODUCE its evidence now (run the cycle, capture the screenshot via the browser MCP, etc.): ${mandatoryLine()}.` : ``,
           feedback[t.id] ? `\n## A previous attempt was sent back — address this and produce the missing evidence:\n${feedback[t.id]}` : ``,
+          `If this task genuinely cannot be completed, set blocked=true and: blockerKind='external' for an infra/creds/env/no-test-path wall (say exactly what is missing), or blockerKind='decision' if it needs a human choice the spec does not settle (state the exact question). Do NOT fake completion.`,
           `After editing, run the scoped checks and capture real output as evidence.`,
         ].filter(Boolean).join('\n'),
         evidence: 'Report the actual files changed and the command output proving it works.',
@@ -174,22 +229,30 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
       { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}`, ...compute('Implement') }
     )
     ledger[t.id].impl = impl
-    if (impl && impl.blocked) { ledger[t.id].status = 'blocked'; ledger[t.id].blocker = impl.blockerReason || 'blocked by implementer' }
+    if (impl && impl.blocked) {
+      if (impl.blockerKind === 'decision') {
+        ledger[t.id].status = 'needs-decision'
+        decisions.push({ taskId: t.id, question: impl.blockerReason || 'needs a human decision', source: 'implementer' })
+      } else {
+        ledger[t.id].status = 'blocked-external'
+        ledger[t.id].blocker = impl.blockerReason || 'blocked by implementer'
+      }
+    }
   }
 
-  // Verify only the tasks that didn't self-report blocked this round.
-  const toVerify = remaining.filter(t => ledger[t.id].status !== 'blocked')
+  // Verify only the tasks still pending (not self-reported blocked/decision this round).
+  const toVerify = remaining.filter(t => ledger[t.id].status === 'pending')
   phase('Verify')
   const verdicts = await parallel(toVerify.map(t => () =>
     agent(
       brief({
-        role: 'task verifier (checks, never fixes)',
+        role: 'task verifier (independent — checks, never fixes)',
         scope: (t.files || []).join(', '),
         question: [
-          `Independently verify the acceptance criterion is actually met WITH evidence — do not trust the implementer's claim: ${t.criterion}`,
+          `Independently verify this acceptance criterion is actually met WITH evidence — do not trust the implementer's claim: ${critText(t)}`,
           `Re-run the relevant scoped test/command yourself and read the changed code.`,
           mandatory.length ? `Also confirm any mandatory requirement that applies to these files was satisfied with real evidence (e.g. a screenshot of the working UI exists, the eval/sim cycle ran): ${mandatoryLine()}. If that evidence is missing, the task is NOT satisfied — state exactly what to produce.` : ``,
-          `satisfied=true only if the criterion is met. evidenceProduced=true only if all applicable mandatory evidence exists. Otherwise give precise, actionable feedback for the next attempt.`,
+          `satisfied=true only if the criterion is met; evidenceProduced=true only if all applicable mandatory evidence exists. If the criterion itself is ambiguous/underspecified such that no implementation can settle it without a human decision, set needsHuman=true with a precise humanQuestion. Otherwise give precise, actionable feedback for the next attempt.`,
         ].filter(Boolean).join('\n'),
         evidence: 'Cite the command output or file:line you checked.',
         schemaNote: 'Return the verdict object; `missing`/`feedback` must be specific enough to act on.',
@@ -204,13 +267,25 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk()) {
     ledger[t.id].verdict = v
     if (v && v.satisfied && v.evidenceProduced) {
       ledger[t.id].status = 'done'
+    } else if (v && v.needsHuman) {
+      ledger[t.id].status = 'needs-decision'
+      decisions.push({ taskId: t.id, question: v.humanQuestion || 'criterion is underspecified — needs a human decision', source: 'verifier' })
     } else {
       feedback[t.id] = (v && (v.missing || v.feedback)) || 'verification failed; re-check the criterion and produce the required evidence'
       next.push(t)
     }
   })
   remaining = next
-  log(`Round ${round} done — ${plan.tasks.filter(t => ledger[t.id].status === 'done').length}/${plan.tasks.length} tasks satisfied`)
+
+  // Progress = a task newly closed this round, OR genuinely new verifier feedback on
+  // a still-open task. A round that does neither is the loop spinning — stop and hand
+  // back to the human rather than burn more rounds (and tokens) on the same wall.
+  const madeProgress = doneCount() > doneBefore || remaining.some(t => (feedback[t.id] || '') !== (feedbackBefore[t.id] || ''))
+  log(`Round ${round} done — ${doneCount()}/${plan.tasks.length} tasks satisfied`)
+  if (!madeProgress && remaining.length) {
+    stuck = true
+    log(`No progress this round (nothing closed, feedback unchanged) — stopping the loop and returning to you instead of thrashing.`)
+  }
 }
 
 // ── Phase 4: final gate — canonical checks + invariant gates + mandatory reqs. ─
@@ -248,44 +323,87 @@ async function checkRequirements() {
 
 const [checks, reqResults] = await parallel([() => runChecks(), () => checkRequirements()])
 
-// ── Synthesize the task ledger + convergence verdict. ─────────────────────────
+// ── Synthesize the ledger, per-criterion satisfaction, and the exit state. ─────
 const tasksOut = plan.tasks.map(t => {
   const e = ledger[t.id]
   return {
-    id: t.id, criterion: t.criterion, status: e.status, rounds: e.rounds,
+    id: t.id, description: t.task.description, criterionIds: t.criterionIds || [], status: e.status, rounds: e.rounds,
     evidence: (e.impl && e.impl.evidence) || '', testAdded: (e.impl && e.impl.testAdded) || '',
     blocker: e.blocker || '', lastFeedback: feedback[t.id] || '',
   }
 })
-const done = tasksOut.filter(t => t.status === 'done')
-const blocked = tasksOut.filter(t => t.status === 'blocked')
-const unfinished = tasksOut.filter(t => t.status !== 'done' && t.status !== 'blocked')
-const reqs = (reqResults && reqResults.requirements) || []
-const unmetReqs = reqs.filter(r => r.status === 'unmet')
-const blockedReqs = reqs.filter(r => r.status === 'blocked')
-const failedChecks = ((checks && checks.checks) || []).filter(c => c.result === 'fail')
-const failedGates = ((checks && checks.invariantGates) || []).filter(g => g.result === 'fail')
+// A criterion is met only when every task mapped to it is done. Unmapped criteria
+// (no task addresses them) count as unmet — a planning gap, surfaced below.
+const criteriaOut = effectiveCriteria.map(c => {
+  const taskIds = critById[c.id].taskIds
+  return {
+    id: c.id, criterion: c.criterion, source: c.source || '',
+    satisfied: taskIds.length > 0 && taskIds.every(id => ledger[id].status === 'done'),
+    mappedTasks: taskIds, unmapped: taskIds.length === 0,
+  }
+})
 
-const converged = unfinished.length === 0 && failedChecks.length === 0 && failedGates.length === 0 && unmetReqs.length === 0 && blockedReqs.length === 0
-const stopReason = converged ? 'all criteria met + checks green + mandatory evidence produced'
-  : round >= MAX_ROUNDS && remaining.length ? `hit MAX_ROUNDS (${MAX_ROUNDS}) with ${remaining.length} task(s) still open — escalate (deep-debug) rather than thrash`
+const done           = tasksOut.filter(t => t.status === 'done')
+const blockedExternal = tasksOut.filter(t => t.status === 'blocked-external')
+const needsDecision  = tasksOut.filter(t => t.status === 'needs-decision')
+const unfinished     = tasksOut.filter(t => t.status === 'pending')  // loop stopped (stuck/rounds/budget) without resolving
+const unmetCriteria  = criteriaOut.filter(c => !c.satisfied)
+const reqs           = (reqResults && reqResults.requirements) || []
+const unmetReqs      = reqs.filter(r => r.status === 'unmet')
+const blockedReqs    = reqs.filter(r => r.status === 'blocked')
+const failedChecks   = ((checks && checks.checks) || []).filter(c => c.result === 'fail')
+const failedGates    = ((checks && checks.invariantGates) || []).filter(g => g.result === 'fail')
+
+// Convergence requires the FULL contract: every criterion met (with evidence) AND
+// checks green AND invariant gates green AND mandatory evidence produced AND no
+// pending human decision. Anything short is not done — say which.
+const allCriteriaMet = criteriaOut.length ? unmetCriteria.length === 0 : unfinished.length === 0
+const isComplete = allCriteriaMet && failedChecks.length === 0 && failedGates.length === 0
+  && unmetReqs.length === 0 && blockedReqs.length === 0 && needsDecision.length === 0
+
+// Three exit states — each a distinct handoff to the human (CONTRACT §4.8):
+//   complete  → done, proven; recommend /review.
+//   needs-you → a decision is pending, work is unfinished, or a check/requirement
+//               failed — the loop returns to you with the specific thing.
+//   blocked   → the ONLY thing left is an external wall (creds/env/infra); no human
+//               decision unblocks it, you need to clear the wall.
+let exitState
+if (isComplete) exitState = 'complete'
+else if (decisions.length || unfinished.length || failedChecks.length || failedGates.length || unmetReqs.length) exitState = 'needs-you'
+else if (blockedExternal.length || blockedReqs.length) exitState = 'blocked'
+else exitState = 'needs-you'
+
+const stopReason =
+  exitState === 'complete' ? 'every locked criterion proven with evidence + checks green + mandatory evidence produced'
+  : exitState === 'blocked' ? `external blocker(s) — ${[...blockedExternal.map(t => t.blocker), ...blockedReqs.map(r => r.requirement)].filter(Boolean).join('; ') || 'cannot proceed without infra/creds/env'}`
+  : decisions.length ? `needs your decision: ${decisions.map(d => d.question).join(' | ')}`
+  : stuck ? `loop stalled (no progress) with ${unfinished.length} task(s) open — returning to you with the unmet criteria + last feedback`
+  : round >= MAX_ROUNDS && remaining.length ? `hit the MAX_ROUNDS backstop (${MAX_ROUNDS}) — escalate (deep-debug) or re-run with more budget`
   : !budgetOk() ? 'stopped on budget ceiling — re-run with more budget to finish'
-  : 'loop exited'
+  : (failedChecks.length || failedGates.length || unmetReqs.length) ? 'all tasks attempted but a check / invariant gate / mandatory requirement is not satisfied'
+  : 'returning to you with the unmet criteria + last feedback'
 
-log(`Converged: ${converged} — ${done.length}/${plan.tasks.length} done, ${blocked.length} blocked, ${unfinished.length} unfinished; ${unmetReqs.length} unmet requirement(s)`)
+log(`Exit: ${exitState} — ${done.length}/${plan.tasks.length} tasks done, ${criteriaOut.filter(c => c.satisfied).length}/${criteriaOut.length} criteria met, ${needsDecision.length} need-decision, ${blockedExternal.length} blocked; ${unmetReqs.length} unmet requirement(s)`)
 
 return {
   scale,
-  converged,
+  exitState,
+  converged: isComplete,        // kept for back-compat: true iff exitState === 'complete'
   stopReason,
   rounds: round,
+  criteriaWereConfirmed: criteriaProvided,   // false → criteria were DERIVED, not human-locked (flag in the report)
+  criteria: criteriaOut,
   tasks: tasksOut,
+  decisions,                    // [{taskId, question, source}] — the questions a needs-you exit hands back
   checks: checks || { checks: [], invariantGates: [] },
   mandatoryRequirements: reqs,
-  blockers: blocked.map(t => ({ id: t.id, blocker: t.blocker })),
+  blockers: blockedExternal.map(t => ({ id: t.id, blocker: t.blocker })),
   coverage: {
     done: done.map(t => t.id),
     unfinished: unfinished.map(t => t.id),
+    needsDecision: needsDecision.map(t => t.id),
+    unmetCriteria: unmetCriteria.map(c => c.id),
+    unmappedCriteria: criteriaOut.filter(c => c.unmapped).map(c => c.id),
     mandatoryUnmet: unmetReqs.map(r => r.requirement),
     mandatoryBlocked: blockedReqs.map(r => r.requirement),
     droppedToBudget: !budgetOk(),

@@ -103,6 +103,17 @@ The command resolves the target and gathers repo context (§2), then calls
 `Workflow({ name: '<name>', args: {...} })`. The script never asks the user
 anything and never prints the final human report — it returns structured data.
 
+**What belongs in the script vs. the launcher (the anti-bloat rule).** A workflow
+script earns its lines *only* by doing what the main agent + human loop cannot:
+parallel fan-out, *independent/adversarial* verification, or determinism across many
+units. A phase that is inherently **sequential and needs human steering belongs in
+the launcher** (conversational, in the main agent), not in the detached script — a
+script can't pause to ask, so burying a steerable phase in it either thrashes or locks
+the user out. Concretely: implementation is sequential and the launcher locks its
+contract with the human; the *verification* of that contract is independent and
+fans out — so it lives in the script. Apply this test before adding any phase or a
+new workflow: if its core is sequential-and-human-steered, don't put it in a script.
+
 ### 4.2 Sandbox truths — inject static context, delegate live work
 
 Workflow scripts run in a **restricted JS sandbox**:
@@ -193,31 +204,58 @@ era lacked. The canonical shapes the scripts use:
   invariantGates: [{invariant, command, result, evidence}] }`
 - **Spec** — `{ problem, acceptanceCriteria: [{id, criterion, verifyBy}],
   affectedAreas, approach, testStrategy, risks, openQuestions }` (see `spec.js`).
-- **TaskLedger** — `{ tasks: [{id, criterion, status, rounds, evidence}], converged,
-  stopReason }` (see `execute.js`).
+- **TaskLedger** — `{ exitState: complete|needs-you|blocked, criteria: [{id,
+  criterion, satisfied}], tasks: [{id, criterionIds, status, rounds, evidence}],
+  decisions, converged, stopReason }` (see `execute.js`, §4.8).
 
 A workflow returns one structured object; the command turns it into the §6 report.
 
-### 4.8 Mandatory requirements — the user's install-time gates
+### 4.8 The execute loop — locked criteria, independent verify, progress-based exit
 
-The retrofit interview asks the user, **right at install**, what this repo treats as
-non-negotiable for a change: a test that must pass, a cycle that must run
-(eval/sim/soak), an MCP/tool that must be used, an artifact that must be produced
-(e.g. a screenshot proving a UI change works). These land in `repo-profile.md` as
-`{ requirement, appliesWhen, requiredEvidence }` and reach scripts as
-`args.mandatoryRequirements`. This — not editing the script — is how the workflow is
-"changed to fit the repo": the portable script reads the repo's declared gates.
+`/execute` is the kit's loop-engineering primitive: the human defines "done" **once**,
+up front, and the loop then runs autonomously to it. Three properties make that
+autonomy *trustworthy* rather than a way to launder a wrong result:
 
-Enforcement is a **verification loop, not a one-shot block**. The agent should know
-better than to declare done without the evidence:
+**Locked, human-confirmed criteria (the immutable contract).** The loop is only as
+good as its exit condition, so the criteria are confirmed with the human in the
+*launcher* before any code is written, then frozen for the run. The launcher assembles
+candidates from the spec's acceptance criteria + the applicable **mandatory
+requirements** + **invariant gate tests** in blast radius + the repo's **essential
+success tests**, confirms them with the human (adaptively — light when `/spec` already
+vetted them, fuller for a raw request; §4.10), and passes the locked set as
+`args.criteria` (`[{id, criterion, verifyBy, source}]`). The script **decomposes
+against these criteria; it never re-authors them.** If reality diverges (a criterion is
+wrong or impossible), the loop does **not** silently redefine "done" — it returns to the
+human (the `needs-you` exit), per §5.
 
-- In `/execute`, a verifier checks the required evidence was produced; if it's
-  missing, the work goes **back into the implement→verify loop** until it exists (or
-  is recorded BLOCKED ⛔ with why).
-- In `/review`, an unmet mandatory requirement means the verdict **cannot be
-  APPROVE** — `REQUEST CHANGES` if fixable, `BLOCK` if the evidence can't be gathered.
+**Independent verification.** Implementation and verification are **separate agents**.
+The verifier re-proves each criterion with its own command output / file:line — it does
+not trust the implementer's claim. A loop that grades its own homework will converge on
+a false "done"; the independent verify is what prevents that. A criterion is *met* only
+when every task mapped to it passes the verifier with the required evidence.
 
-"Mandatory" means mandatory: the workflow never papers over a missing requirement.
+**Progress-based termination (not a fixed round count).** The loop continues while
+there is open work **and** the last round made progress — a criterion newly satisfied,
+or genuinely new verifier feedback. A round that closes nothing new and repeats the
+same feedback is the loop *spinning*: it stops and hands back rather than burning rounds
+(and tokens) on the same wall. `MAX_ROUNDS` survives only as a backstop against
+pathological oscillation, not as the primary exit.
+
+The loop ends in exactly one of **three exit states**, each a distinct handoff:
+- **`complete`** — every locked criterion proven with evidence, checks green, invariant
+  gates green, mandatory evidence produced, no pending decision. Only this is "done."
+- **`needs-you`** — a decision only the human can make (an ambiguous/underspecified
+  criterion), unfinished work after a stall, or a failed check/requirement. It returns
+  the *specific* question or the unmet criteria + last feedback. Settle it and re-run.
+- **`blocked`** — the only thing left is an external wall (creds/env/infra/no test path)
+  that no human decision unblocks; it returns what was tried and what must be cleared.
+
+The **mandatory requirements** are one input to the locked criteria *and* a final
+evidence gate: a verifier checks the required evidence was produced; if it's missing the
+work loops back until it exists (or is recorded BLOCKED ⛔). In `/review`, an unmet
+mandatory requirement means the verdict **cannot be APPROVE** — `REQUEST CHANGES` if
+fixable, `BLOCK` if the evidence can't be gathered. "Mandatory" means mandatory: the
+workflow never papers over a missing requirement, and never reports `complete` without it.
 
 ### 4.9 Per-phase compute — effort-first model/effort tiering
 
@@ -251,9 +289,11 @@ This is what turns a sweeping report into a collaboration instead of a verdict h
 down — the fix for "I didn't feel involved":
 
 - **Intake (before the workflow):** confirm who the user is and capture what only they
-  know — for `/review`, author-vs-reviewer, plus focus / intent / out-of-scope — and
-  pass it in `args` so every agent's brief honors it. A sweep the user never shaped is
-  exactly what makes them feel uninvolved.
+  know — for `/review`, author-vs-reviewer, plus focus / intent / out-of-scope; for
+  `/execute`, **lock the passing criteria** (§4.8) so the loop runs to a human-confirmed
+  definition of "done" — and pass it in `args` so every agent's brief honors it. A sweep
+  the user never shaped — or a loop whose "done" the user never set — is exactly what
+  makes them feel uninvolved.
 - **Comprehension before issues:** lead the output with the **shape** of the work — a
   Change Map (intent, structure, reading order, hotspots), not a raw list of findings.
   People disengage when handed issues with no map; orient them first.
@@ -325,6 +365,13 @@ never pad.
 ```
 
 If a section is empty, write "none" rather than deleting it — absence is a signal.
+
+Alongside this inline report, every command also renders a **visual HTML artifact**
+(via the Artifact tool, house style: Fraunces + Spline Sans, warm neutrals, one
+terracotta accent, render-on-first-paint, no external assets) so the outcome is
+legible at a glance rather than read as raw return data: `/spec` → the spec sheet,
+`/execute` → the task ledger, `/review` → the change map. The workflow still returns
+data only; the artifact is presentation the command adds after the run is done.
 
 ---
 
