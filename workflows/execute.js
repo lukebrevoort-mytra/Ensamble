@@ -196,11 +196,49 @@ const plan = await agent(
 )
 if (!plan || !(plan.tasks || []).length) return { error: 'Could not decompose the spec into tasks.' }
 
+// Guard against planner id collisions: a duplicate task id collapses distinct tasks into
+// one ledger entry (last-write-wins) while plan.tasks still iterates both — double-spawning
+// agents and corrupting doneCount/criteria math. Make ids unique, keeping the first seen.
+const seenTaskIds = new Set()
+plan.tasks.forEach(t => {
+  if (seenTaskIds.has(t.id)) {
+    let n = 2
+    while (seenTaskIds.has(`${t.id}#${n}`)) n++
+    log(`Planner emitted duplicate task id "${t.id}" — renaming the duplicate to "${t.id}#${n}" to keep the ledger consistent.`)
+    t.id = `${t.id}#${n}`
+  }
+  seenTaskIds.add(t.id)
+})
+
+// Honour the dependsOn contract: implement a task only after the tasks it depends on. The
+// planner is told to "sequence by dependency", but the loop would otherwise run raw array
+// order. Topologically sort once — the loop preserves this order across rounds. Unknown
+// deps are ignored; a dependency cycle is broken (those tasks fall back to planner order).
+;(() => {
+  const byId = new Map(plan.tasks.map(t => [t.id, t]))
+  const visited = new Set(), onStack = new Set(), ordered = []
+  const visit = t => {
+    if (visited.has(t.id) || onStack.has(t.id)) return   // already placed, or a cycle edge
+    onStack.add(t.id)
+    ;(t.dependsOn || []).forEach(dep => { const d = byId.get(dep); if (d) visit(d) })
+    onStack.delete(t.id); visited.add(t.id); ordered.push(t)
+  }
+  plan.tasks.forEach(visit)
+  plan.tasks = ordered
+})()
+
 // Planner notes orient each implementer (CONTRACT §4.3) without re-deriving the rationale.
 const planContext = plan.notes ? `Planner notes: ${plan.notes}` : ''
 
 // The criteria the loop measures against: the locked set, or (fallback) the derived one.
-const effectiveCriteria = criteriaProvided ? criteria : ((plan.derivedCriteria) || [])
+// Duplicate criterion ids collapse in critById (keyed by id), so two criteria would share
+// one taskIds set and mask each other's satisfaction. Keep the first of any id collision.
+const rawCriteria = criteriaProvided ? criteria : ((plan.derivedCriteria) || [])
+const seenCritIds = new Set()
+const effectiveCriteria = rawCriteria.filter(c => {
+  if (seenCritIds.has(c.id)) { log(`Duplicate criterion id "${c.id}" in the ${criteriaProvided ? 'locked' : 'derived'} set — keeping the first, ignoring the rest.`); return false }
+  seenCritIds.add(c.id); return true
+})
 const critById = {}
 effectiveCriteria.forEach(c => { critById[c.id] = { id: c.id, criterion: c.criterion, source: c.source || '', taskIds: [] } })
 plan.tasks.forEach(t => (t.criterionIds || []).forEach(cid => { if (critById[cid]) critById[cid].taskIds.push(t.id) }))
@@ -231,7 +269,7 @@ const doneCount = () => plan.tasks.filter(t => ledger[t.id].status === 'done').l
 // the cap (CONTRACT §4.8: progress-based termination, not a fixed round count).
 while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   round++
-  const doneBefore = doneCount()
+  const openBefore = remaining.length
   const feedbackBefore = {}
   remaining.forEach(t => { feedbackBefore[t.id] = feedback[t.id] || '' })
   log(`Round ${round}: implementing ${remaining.length} open task(s)`)
@@ -308,10 +346,12 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   })
   remaining = next
 
-  // Progress = a task newly closed this round, OR genuinely new verifier feedback on
-  // a still-open task. A round that does neither is the loop spinning — stop and hand
-  // back to the human rather than burn more rounds (and tokens) on the same wall.
-  const madeProgress = doneCount() > doneBefore || remaining.some(t => (feedback[t.id] || '') !== (feedbackBefore[t.id] || ''))
+  // Progress = a task LEFT the open pool this round (closed as done OR resolved to
+  // blocked-external/needs-decision — all genuine movement), OR new verifier feedback on a
+  // still-open task. Counting blocked/decision transitions stops the detector from
+  // mislabeling a round that hit an external wall as "stalled" (the exit logic below
+  // reports the real blocked/needs-you state once the open pool drains).
+  const madeProgress = remaining.length < openBefore || remaining.some(t => (feedback[t.id] || '') !== (feedbackBefore[t.id] || ''))
   log(`Round ${round} done — ${doneCount()}/${plan.tasks.length} tasks satisfied`)
   if (!madeProgress && remaining.length) {
     stuck = true
@@ -388,7 +428,10 @@ const failedGates    = ((checks && checks.invariantGates) || []).filter(g => g.r
 // Convergence requires the FULL contract: every criterion met (with evidence) AND
 // checks green AND invariant gates green AND mandatory evidence produced AND no
 // pending human decision. Anything short is not done — say which.
-const allCriteriaMet = criteriaOut.length ? unmetCriteria.length === 0 : unfinished.length === 0
+// No-criteria fallback: "all met" must mean every task actually reached done — NOT merely
+// "nothing pending", which is also true when every task ended blocked-external/needs-decision
+// (that would ship a false converged=true / exitState=complete for a run that did nothing).
+const allCriteriaMet = criteriaOut.length ? unmetCriteria.length === 0 : done.length === plan.tasks.length
 const isComplete = allCriteriaMet && failedChecks.length === 0 && failedGates.length === 0
   && unmetReqs.length === 0 && blockedReqs.length === 0 && needsDecision.length === 0
 
