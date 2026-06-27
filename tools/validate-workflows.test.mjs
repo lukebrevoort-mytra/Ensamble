@@ -31,7 +31,7 @@ function checkSource(src) {
 test('AC2: enumerates exactly the workflows/*.js scripts', () => {
   const scripts = listWorkflowScripts()
   const names = scripts.map((f) => path.basename(f))
-  assert.deepEqual(names, ['execute.js', 'review.js', 'spec.js'], 'spec/execute/review .js, sorted')
+  assert.deepEqual(names, ['execute.js', 'pulse.js', 'review.js', 'spec.js'], 'spec/execute/review/pulse .js, sorted')
 })
 
 test('AC2: every target is an absolute path under workflows/, ending in .js', () => {
@@ -130,7 +130,7 @@ test('AC4: matches both `export const meta = {` and bare `const meta = {`', () =
   }
 })
 
-test('AC4: all three real workflow scripts contain a meta object literal', () => {
+test('AC4: all four real workflow scripts contain a meta object literal', () => {
   for (const file of listWorkflowScripts()) {
     assert.ok(
       !validateScript(file).includes('no meta object literal found'),
@@ -199,7 +199,7 @@ test('AC5: review.js:136 comment (bare Date / Math.random) does NOT false-positi
   )
 })
 
-test('AC5: all three real workflow scripts are free of forbidden APIs', () => {
+test('AC5: all four real workflow scripts are free of forbidden APIs', () => {
   for (const file of listWorkflowScripts()) {
     const errors = validateScript(file)
     assert.ok(
@@ -215,7 +215,7 @@ test('AC1/AC6: clean tree prints exactly one ✓ line per workflow and exits 0',
   const lines = out.trim().split('\n')
   assert.deepEqual(
     lines,
-    ['✓ workflows/execute.js', '✓ workflows/review.js', '✓ workflows/spec.js'],
+    ['✓ workflows/execute.js', '✓ workflows/pulse.js', '✓ workflows/review.js', '✓ workflows/spec.js'],
     'exactly one ✓ line per workflows/*.js, in sorted order, no extra summary line',
   )
   // execFileSync throws on non-zero exit; reaching here proves exit 0 on a clean tree.
