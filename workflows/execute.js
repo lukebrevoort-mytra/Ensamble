@@ -69,6 +69,21 @@ function compute(phaseName) {
 // silence — surface the typo/drift instead of ignoring it.
 Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePolicy key "${k}" matches no phase (expected: ${Object.keys(DEFAULT_TIER).join(', ')}) — ignored.`) })
 
+// Per-task effort (CONTRACT §4.9) — the planner already reasons about each task while
+// decomposing, so it tags each with an implementation-difficulty `effort`. We honour that as
+// a NUDGE around the resolved Implement tier, CLAMPED to ±1 rung: a misread can't tank a hard
+// task or burn `max` on a one-liner — the phase tier stays the anchor, the planner only
+// redistributes effort across tasks around it. Model is never touched here (profile concern).
+const TASK_EFFORT_CLAMP = 1
+function effortForTask(base, taskEffort) {
+  if (!taskEffort) return base
+  const anchorI = EFFORT_LADDER.indexOf(base.effort)
+  const wantI   = EFFORT_LADDER.indexOf(taskEffort)
+  if (anchorI < 0 || wantI < 0) return base   // unknown rung from the planner → keep the phase tier
+  const clampedI = Math.max(anchorI - TASK_EFFORT_CLAMP, Math.min(anchorI + TASK_EFFORT_CLAMP, wantI))
+  return { ...base, effort: EFFORT_LADDER[clampedI] }
+}
+
 function mandatoryLine() {
   return mandatory.length
     ? mandatory.map(m => `${m.requirement} (applies when: ${m.appliesWhen}) → required evidence: ${m.requiredEvidence}`).join('; ')
@@ -119,6 +134,9 @@ const TASK_LEDGER_SCHEMA = {
       criterionIds: { type: 'array', items: { type: 'string' } },  // which locked criteria this task advances
       criterion: { type: 'string' },                               // optional human-readable restatement
       hasTestPath: { type: 'boolean' }, files: { type: 'array', items: { type: 'string' } },
+      // Planner's per-task difficulty rating (CONTRACT §4.9). Nudges the Implement effort
+      // ±1 rung around the phase tier — how hard the IMPLEMENTATION is, not how important.
+      effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] },
       dependsOn: { type: 'array', items: { type: 'string' } } } } },
     derivedCriteria: { type: 'array', items: { type: 'object', required: ['id', 'criterion'], properties: {
       id: { type: 'string' }, criterion: { type: 'string' }, verifyBy: { type: 'string' } } } },
@@ -188,6 +206,7 @@ const plan = await agent(
       `Spec / request:\n"""${spec}"""`,
       ``,
       `For each task: a stable id, what to do, the criterion id(s) it advances (criterionIds), whether a real test path exists (hasTestPath), and the files it touches. Sequence by dependency.`,
+      `Also rate each task's \`effort\` — how hard the IMPLEMENTATION is, NOT how important it is. Most tasks are "medium"; use "low" for mechanical one-liners (rename, config tweak, trivial wiring) and "high"/"xhigh" only for genuinely tricky work (subtle logic, wide blast radius, unclear approach). This redistributes compute toward the hard tasks; it is bounded, so calibrate honestly rather than inflating.`,
     ].join('\n'),
     evidence: 'Every criterion must map to ≥1 task; flag any criterion you cannot map as a QUESTION.',
     fullProfile: true,   // synthesis: the planner decomposes against the whole spec/profile — full profile
@@ -260,6 +279,14 @@ let stuck = false
 
 const doneCount = () => plan.tasks.filter(t => ledger[t.id].status === 'done').length
 
+// Implement-phase tier, resolved once; the planner's per-task `effort` nudges around it via
+// effortForTask. Log the distribution so the per-task spread is visible in the run (it would
+// otherwise be invisible — every other routing decision in this loop is logged too).
+const implTier = compute('Implement')
+const effortDist = plan.tasks.reduce((m, t) => { const e = t.effort && EFFORT_LADDER.includes(t.effort) ? t.effort : '(phase default)'; m[e] = (m[e] || 0) + 1; return m }, {})
+if (Object.keys(effortDist).some(k => k !== '(phase default)'))
+  log(`Per-task effort (nudges Implement ±${TASK_EFFORT_CLAMP} rung around ${implTier.effort}): ${Object.entries(effortDist).map(([e, n]) => `${n}×${e}`).join(', ')}`)
+
 // ── Phases 2–3: the implement→verify loop. Implement runs SEQUENTIALLY (agents
 // mutate the same working tree; parallel writes would clobber each other), then
 // verify runs in PARALLEL and INDEPENDENTLY (the verifier re-proves the criterion
@@ -295,7 +322,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
         evidence: 'Report the actual files changed and the command output proving it works.',
         context: planContext,
       }),
-      { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}`, ...compute('Implement') }
+      { schema: IMPL_SCHEMA, phase: 'Implement', agentType: coderType, label: `impl:${t.id} r${round}`, ...effortForTask(implTier, t.effort) }
     )
     ledger[t.id].impl = impl
     if (impl && impl.blocked) {

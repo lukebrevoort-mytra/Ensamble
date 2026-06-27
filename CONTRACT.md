@@ -328,6 +328,21 @@ session model. This is one more axis of tuning the workflow to the repo: a giant
 monorepo can make broad `gather` cheaper; a sim-heavy repo can make `verify` stronger
 — without editing a script.
 
+**Per-task effort (`/execute` only).** Within the Implement phase, effort can vary *per
+task*, not just per phase. The Plan agent — which already reasons about each task as it
+decomposes the work — tags every task with an `effort` rating for how hard its
+*implementation* is. The Implement fan-out honours that rating as a **nudge** around the
+resolved Implement tier, **clamped to ±1 rung** (`effortForTask`): the planner can drop a
+mechanical one-liner to `low` or raise the gnarly refactor to `high`, but it cannot
+bottom-out a hard task or burn `max` on a triviality — the phase tier stays the anchor and
+the assessment only redistributes effort across tasks around it. It costs **no extra agent**
+(the rating rides on the plan that already happens), never touches `model`, and the cost dial
+still shifts the anchor underneath it. This stays `/execute`-specific on purpose: per-task
+effort earns its place only where task difficulty genuinely varies *and* an upstream phase
+already assesses each item. `/spec`'s exploration (`gather` is the cheap phase) and
+`/review`'s lenses (each deserves uniform scrutiny) meet neither test, so they keep a flat
+per-phase tier — extending the dial there would be cost without signal.
+
 ### 4.10 Human-in-the-loop — comprehension first, decisions owned by the user
 
 A workflow script runs detached and its agents cannot pause to ask the user, so all
