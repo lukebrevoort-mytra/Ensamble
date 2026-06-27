@@ -114,6 +114,15 @@ Enforcement is a **verification loop, not a one-shot block**:
 - [x] Live validation: ran `/review` end-to-end on this repo's own scripts
       (run `wf_fd99a799-7e2`) — engine + schemas + pipeline confirmed working; it
       caught a real install-copy-list bug (now fixed) and two stale-doc nits (fixed)
+- [x] **`/pulse`** added (`workflows/pulse.js` + `commands/pulse.md`) — the **async sibling
+      of `/review`**, built to demonstrate that dynamic workflows are an under-used force
+      multiplier. Reuses review's `brief()` + adversarial verify ladder over a delta-or-repo
+      scope; adds a **deterministic** health score (so the day-over-day trend is real, not LLM
+      jitter), cross-run **dedup/trend** via a pure `priorState → newState` seam (the runner
+      does the I/O; the script stays sandbox-pure), and a synthesized morning **briefing**.
+      Human-in-the-loop relocated from runtime to async triage (a dismiss feeds `dismissed`).
+      Wired into install/update (now **9** portable files) + the profile `phasePolicy`
+      (scan·vitals·assess·verify·synthesize). Validator green.
 
 ## Validation & hardening (live runs through the real engine)
 

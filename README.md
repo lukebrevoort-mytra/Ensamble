@@ -2,8 +2,8 @@
 
 **A coordinated crew of specialist agents — and you.**
 
-Ensemble turns Claude Code's native **Workflow engine** into three repo-aware
-software-development workflows — `/spec`, `/execute`, `/review` — that you drop into
+Ensemble turns Claude Code's native **Workflow engine** into four repo-aware
+software-development workflows — `/spec`, `/execute`, `/review`, `/pulse` — that you drop into
 *any* repository. They read the repo, tune themselves to it, fan out specialist
 subagents, adversarially verify their own findings, and keep **you** in the
 decisions. Orchestrated agents; human-owned calls.
@@ -12,6 +12,7 @@ decisions. Orchestrated agents; human-owned calls.
 /spec     idea     →  an implementation-ready spec, grounded in your code
 /execute  spec     →  you lock "done", the loop builds until every criterion is proven
 /review   pr|branch →  the change mapped, the calls yours to make
+/pulse    (daily)  →  a morning health check: score, the one thing, what changed since
 ```
 
 ---
@@ -34,15 +35,16 @@ built on three principles that keep it grounded and keep you involved:
 
 ---
 
-## The three workflows
+## The four workflows
 
 | Command | Phases | You get |
 |---|---|---|
 | **`/spec`** | Scope → Gather (parallel explorers) → Draft → adversarial Critique | An implementation-ready spec with testable criteria, anchored to real code |
 | **`/execute`** | Lock criteria with you → Plan → **Implement ⇄ independent Verify loop** → Checks | Working code. You confirm the passing criteria once up front; the loop runs autonomously to them (looping while it makes progress, not for a fixed count) and exits **complete / needs-you / blocked** — it won't report done until every criterion **and** your repo's mandatory evidence (a passing test, a UI screenshot) are proven |
 | **`/review`** | Shape → Review → Verify → Checks | A Change Map (chat + visual artifact), findings tagged bug / judgment / intent-question, and a verdict **you** set |
+| **`/pulse`** | Scan → Vitals → Assess → Verify → Synthesize | A daily health **briefing** (runs headless on a schedule): a deterministic health score + trend, the one thing worth your attention, and net-new / still-open / resolved since the last run — deduped so day-2 isn't a reprint of day-1 |
 
-All three **scale to the work** — a tiny change spawns a couple of agents; "audit this
+All four **scale to the work** — a tiny change spawns a couple of agents; "audit this
 thoroughly" spawns adversarial panels — bounded by your token budget.
 
 ---
@@ -91,6 +93,8 @@ requirements**), and writes `.claude/ensemble/repo-profile.md`.
 /execute  .workflows/spec-refresh-rotation.md # → builds it, looping until proven
 /review                                        # → reviews the current branch
 /review   1234                                 # → reviews PR #1234
+/pulse                                         # → daily health check (delta since last run)
+/pulse    repo                                 # → whole-repo deep pass (the weekly cadence)
 ```
 
 ### Keep installs current
@@ -130,6 +134,24 @@ This is the human-in-the-loop model in action:
 
 ---
 
+## What a `/pulse` feels like
+
+You don't run it — it runs while you sleep (a hosted instance / cron) and you wake to a
+briefing:
+
+1. **A score, with a trend** — `82 ↓3` — health is a number that *moves*, not a fresh
+   verdict each day.
+2. **One thing to look at** — the single highest-impact issue, chosen *for this repo* (a
+   failing safety gate or an issue on a critical surface outranks a cosmetic nit), already
+   adversarially verified so it isn't a false alarm.
+3. **What changed** — net-new since yesterday, still-open (with how long), resolved ✓ —
+   **deduped against the last run**, so day-2 is signal, not a reprint of day-1.
+4. **You triage on read** — dismiss a false positive (it never nags again) or hand a real
+   one to `/execute`. The human-in-the-loop, moved from runtime to your morning coffee.
+
+The "single setup" is the `repo-profile.md` you already wrote at install — Pulse rides on
+it, which is why it assesses *your* repo, not a generic checklist.
+
 ## What gets installed
 
 ```
@@ -138,10 +160,10 @@ This is the human-in-the-loop model in action:
     CONTRACT.md                portable operating contract (identical everywhere)
     repo-profile.md            this repo's profile — the only per-repo file
   commands/
-    spec.md  execute.md  review.md
+    spec.md  execute.md  review.md  pulse.md
   workflows/
-    spec.js  execute.js  review.js   resolve as Workflow({name:"…"})
-<repo>/.workflows/             ← gitignored scratch — recon.md · spec-*.md · review-*.md
+    spec.js  execute.js  review.js  pulse.js   resolve as Workflow({name:"…"})
+<repo>/.workflows/             ← gitignored scratch — recon.md · spec-*.md · review-*.md · pulse-*.md · pulse-state.json
 ```
 
 The **only** per-repo file you maintain is `repo-profile.md`. Everything else is the
