@@ -8,9 +8,9 @@ recon/interview and **without ever touching** the per-repo `repo-profile.md` or 
 `.workflows/` cache. This is the one-command answer to "the kit changed; update my
 repos." It is mechanical (file copy + validate) — no agents, no Workflow tool.
 
-The portable layer = these 7 files, copied verbatim:
-`CONTRACT.md → .claude/ensemble/CONTRACT.md`, `commands/{spec,execute,review}.md →
-.claude/commands/`, `workflows/{spec,execute,review}.js → .claude/workflows/`.
+The portable layer = these 9 files, copied verbatim:
+`CONTRACT.md → .claude/ensemble/CONTRACT.md`, `commands/{spec,execute,review,debug}.md →
+.claude/commands/`, `workflows/{spec,execute,review,debug}.js → .claude/workflows/`.
 
 ## 1 — Locate the source kit (`<KIT>`)
 Resolve `<KIT>` (the Ensemble repo that holds `commands/`, `workflows/`, `templates/`),
@@ -39,7 +39,7 @@ Ensemble install, skip it. List the targets you found before acting.
 
 ## 3 — Sync each target (idempotent, safe)
 For each target repo, **diff first, then copy only what differs**, and report per file:
-1. Compare each of the 7 portable files (`<KIT>` vs `<repo>/.claude/...`); copy the ones
+1. Compare each of the 9 portable files (`<KIT>` vs `<repo>/.claude/...`); copy the ones
    that differ, leave identical ones untouched. Record `updated` vs `current` per file.
 2. **Never** modify `.claude/ensemble/repo-profile.md`, `.claude/settings*.json`, or
    anything under `.workflows/` — those are per-repo (human-maintained / scratch).

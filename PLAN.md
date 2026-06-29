@@ -34,9 +34,9 @@ in `CONTRACT.md §4`.
 | Layer | Files | Role | Committed? |
 |---|---|---|---|
 | **Guideline** | `CONTRACT.md` | Orchestration contract: launch model, sandbox truths, the standard agent brief, tool-awareness rule, adaptive scale, adversarial-verify, the canonical output schemas | ✅ portable, identical everywhere |
-| **Workflows** | `workflows/{spec,execute,review}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
+| **Workflows** | `workflows/{spec,execute,review,debug}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
 | **Adjustment** | `commands/ensemble-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** the scripts read | ✅ per-repo |
-| **Entry points** | `commands/{spec,execute,review}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
+| **Entry points** | `commands/{spec,execute,review,debug}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
 
 Ephemeral (gitignored): `.workflows/recon.md`, `.workflows/{spec,review}-<slug>.md`,
 workflow run journals.
@@ -109,6 +109,13 @@ Enforcement is a **verification loop, not a one-shot block**:
       mandatory-requirements refinement, then said "build spec/execute, then validate"
 - [x] `workflows/spec.js` + `commands/spec.md`
 - [x] `workflows/execute.js` + `commands/execute.md` (implement→verify loop)
+- [x] `workflows/debug.js` + `commands/debug.md` — the **diagnose** workflow (Locate →
+      always-Reproduce → Investigate fan-out → adversarial Verify → root cause + fix
+      *route*). Passes the §4.1 anti-bloat test cleanly: its core is parallel hypothesis
+      fan-out + *independent* reproduction + adversarial root-cause verification — none of
+      it human-steered mid-run (the human decides what to do with the finished diagnosis).
+      It diagnoses only; the fix routes to `/execute` or `/spec`, so it never overlaps
+      `/execute`'s lane.
 - [x] `docs/architecture.html` — redrawn for the Workflow-centered model
 - [x] `README.md` — rewritten around the new model
 - [x] Live validation: ran `/review` end-to-end on this repo's own scripts

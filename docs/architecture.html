@@ -120,7 +120,7 @@
   <header class="hero">
     <p class="eyebrow">Native orchestration · Repo-aware · Evidence-first</p>
     <h1>A repo that teaches the workflow, not a workflow that <em>assumes</em> the repo.</h1>
-    <p class="lede"><b>/spec</b>, <b>/execute</b>, and <b>/review</b> are thin launchers built on Claude's <b>native Workflow engine</b>. Each gathers repo context (profile + recon) and injects it as static <code>args</code> into a portable, schema-validated workflow script — because the script's sandbox can't read the repo, but the agents it spawns can. Every spawned agent re-orients on that context, uses the repo's real tools, and produces structured evidence. Mandatory requirement gates — declared once at install — ensure the workflow never calls something done without the proof.</p>
+    <p class="lede"><b>/spec</b>, <b>/execute</b>, <b>/review</b>, and <b>/debug</b> are thin launchers built on Claude's <b>native Workflow engine</b>. Each gathers repo context (profile + recon) and injects it as static <code>args</code> into a portable, schema-validated workflow script — because the script's sandbox can't read the repo, but the agents it spawns can. Every spawned agent re-orients on that context, uses the repo's real tools, and produces structured evidence. Mandatory requirement gates — declared once at install — ensure the workflow never calls something done without the proof.</p>
   </header>
 
   <section>
@@ -136,8 +136,8 @@
       <div class="layer l2">
         <span class="tag">Layer 2 · Workflows · Portable · identical everywhere</span>
         <h3>Native workflow scripts</h3>
-        <p><code>workflows/{spec,execute,review}.js</code> are the actual dynamic workflows — deterministic fan-out, parallel pipelines, adversarial verification, schema-validated results. They are generic: they accept <code>args={profile, recon, target, roster, tools, mandatoryRequirements, …}</code> injected by the launcher, and return a structured object. Identical in every repo.</p>
-        <div class="chips"><span class="chip static">workflows/spec.js</span><span class="chip static">workflows/execute.js</span><span class="chip static">workflows/review.js</span></div>
+        <p><code>workflows/{spec,execute,review,debug}.js</code> are the actual dynamic workflows — deterministic fan-out, parallel pipelines, adversarial verification, schema-validated results. They are generic: they accept <code>args={profile, recon, target, roster, tools, mandatoryRequirements, …}</code> injected by the launcher, and return a structured object. Identical in every repo.</p>
+        <div class="chips"><span class="chip static">workflows/spec.js</span><span class="chip static">workflows/execute.js</span><span class="chip static">workflows/review.js</span><span class="chip static">workflows/debug.js</span></div>
       </div>
       <div class="layer l3">
         <span class="tag">Layer 3 · Adjustment · Per-repo · generated at install</span>
@@ -148,14 +148,14 @@
       <div class="layer l4">
         <span class="tag">Layer 4 · Entry points · Portable · thin launchers</span>
         <h3>Command launchers</h3>
-        <p>The <code>/spec</code>, <code>/execute</code>, and <code>/review</code> commands run in the main agent. Each reads the contract and profile, ensures recon is fresh, resolves the target, gathers changed files and canonical commands as FACTs, then calls <code>Workflow({name, args})</code>. The command is what authorises the Workflow tool's opt-in. After the script returns, the command renders the structured result into the §6 report and saves the artifact.</p>
-        <div class="chips"><span class="chip warn">commands/spec.md</span><span class="chip warn">commands/execute.md</span><span class="chip warn">commands/review.md</span><span class="chip warn">Workflow({name, args})</span></div>
+        <p>The <code>/spec</code>, <code>/execute</code>, <code>/review</code>, and <code>/debug</code> commands run in the main agent. Each reads the contract and profile, ensures recon is fresh, resolves the target, gathers changed files and canonical commands as FACTs, then calls <code>Workflow({name, args})</code>. The command is what authorises the Workflow tool's opt-in. After the script returns, the command renders the structured result into the §6 report and saves the artifact.</p>
+        <div class="chips"><span class="chip warn">commands/spec.md</span><span class="chip warn">commands/execute.md</span><span class="chip warn">commands/review.md</span><span class="chip warn">commands/debug.md</span><span class="chip warn">Workflow({name, args})</span></div>
       </div>
     </div>
   </section>
 
   <section>
-    <h2><span class="n">02</span>The three workflows</h2>
+    <h2><span class="n">02</span>The four workflows</h2>
     <p class="sub">Each is a native workflow script invoked via <code>Workflow({name, args})</code>. The launcher injects repo context; the script orchestrates deterministic fan-out and returns a structured object the command renders. Artifacts chain through the gitignored <code>.workflows/</code> handoff space.</p>
     <div class="flow">
       <div class="wf">
@@ -193,6 +193,18 @@
           <li><b>Checks</b> — canonical build/typecheck/lint/tests + invariant gates + mandatory-requirements gate → verdict</li>
         </ol>
         <div class="out">→ .workflows/review-&lt;slug&gt;.md</div>
+      </div>
+      <div class="wf">
+        <span class="cmd">/debug</span>
+        <h3>Debug</h3>
+        <p class="goal">Bug report → a reproduced, root-caused diagnosis and an evidence-backed route to the fix. It diagnoses; it does not fix.</p>
+        <ol class="phases">
+          <li><b>Locate</b> — read the report + repo: affected areas, ranked root-cause hypotheses, and how to reproduce it</li>
+          <li><b>Reproduce</b> — <em>always</em> attempt to recreate the bug; capture the real failure (stack / assertion / wrong output)</li>
+          <li><b>Investigate</b> — one investigator per hypothesis, each grounded in the reproduction evidence, traces the cause to file:line</li>
+          <li><b>Verify</b> — adversarially refute the leading diagnosis; a plausible cause that doesn't explain the failure is dropped</li>
+        </ol>
+        <div class="out">→ .workflows/debug-&lt;slug&gt;.md → /execute or /spec</div>
       </div>
     </div>
   </section>
@@ -258,7 +270,7 @@
     <h2><span class="n">05</span>Install &amp; retrofit</h2>
     <p class="sub"><code>/ensemble-install</code> drops the portable layer into a repo, runs detection, and interviews the user so the scripts know this repo's commands, harnesses, tools — and its non-negotiables.</p>
     <div class="install">
-      <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable layer: <code>CONTRACT.md</code> + the three command launchers + <code>workflows/{spec,execute,review}.js</code> into <code>.claude/</code>.</p></div>
+      <div class="istep"><div class="num">01</div><h4>Copy</h4><p>Portable layer: <code>CONTRACT.md</code> + the four command launchers + <code>workflows/{spec,execute,review,debug}.js</code> into <code>.claude/</code>.</p></div>
       <div class="istep"><div class="num">02</div><h4>Gitignore</h4><p>Add <code>.workflows/</code> so scratch space and run artifacts stay uncommitted.</p></div>
       <div class="istep"><div class="num">03</div><h4>Recon</h4><p>Detect stack, layout, CI config, canonical build / typecheck / lint / test commands.</p></div>
       <div class="istep"><div class="num">04</div><h4>Interview</h4><p>Fill the gaps detection can't: sims, MCPs, merge bar, agent roster — and <em>mandatory requirements</em>: what evidence must every applicable change produce? Which tools must be used?</p></div>
@@ -277,6 +289,7 @@
       <span class="a">spec.js</span>                <span class="c"># Workflow({name:"spec", args:{...}})</span>
       <span class="a">execute.js</span>             <span class="c"># Workflow({name:"execute", args:{...}})</span>
       <span class="a">review.js</span>              <span class="c"># Workflow({name:"review", args:{...}})</span>
+      <span class="a">debug.js</span>               <span class="c"># Workflow({name:"debug", args:{...}})</span>
     templates/               <span class="c"># repo-profile template</span>
   commands/
     <span class="a">ensemble-install.md</span>      <span class="c"># /ensemble-install (global)</span>
@@ -287,15 +300,15 @@
     <span class="a">CONTRACT.md</span>              <span class="c"># portable — copied verbatim</span>
     <span class="g">repo-profile.md</span>          <span class="c"># repo-specific — roster, mandatory requirements, tools</span>
   workflows/                 <span class="c"># scripts the Workflow tool resolves by name</span>
-    <span class="a">spec.js  execute.js  review.js</span>
+    <span class="a">spec.js  execute.js  review.js  debug.js</span>
   commands/
-    <span class="a">spec.md  execute.md  review.md</span>   <span class="c"># thin launchers</span>
+    <span class="a">spec.md  execute.md  review.md  debug.md</span>   <span class="c"># thin launchers</span>
 
 <span class="c">gitignored scratch — handoff &amp; cache</span>
 &lt;repo&gt;/.workflows/
-    <span class="i">recon.md</span>                 <span class="c"># cached repo recon, reused by all 3 workflows</span>
-    <span class="i">spec-*.md  review-*.md</span>   <span class="c"># cross-session handoff artifacts</span></pre>
+    <span class="i">recon.md</span>                 <span class="c"># cached repo recon, reused by all 4 workflows</span>
+    <span class="i">spec-*.md  review-*.md  debug-*.md</span>   <span class="c"># cross-session handoff artifacts</span></pre>
   </section>
 
-  <footer>Ensemble · Native Workflow engine · /spec → /execute → /review · evidence over narrative</footer>
+  <footer>Ensemble · Native Workflow engine · /spec → /execute → /review · /debug · evidence over narrative</footer>
 </div>

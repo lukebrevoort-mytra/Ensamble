@@ -1,9 +1,9 @@
 ---
-description: Install Ensemble — the Spec/Execute/Review workflows — into the current repo and retrofit them to its real stack, tests, services, and conventions
+description: Install Ensemble — the Spec/Execute/Review/Debug workflows — into the current repo and retrofit them to its real stack, tests, services, and conventions
 ---
 
-Install **Ensemble** — the portable `/spec`, `/execute`, `/review` workflows — into
-the **current repo** and specialize them to *this* repo.
+Install **Ensemble** — the portable `/spec`, `/execute`, `/review`, `/debug` workflows
+— into the **current repo** and specialize them to *this* repo.
 
 Source of truth: the **Ensemble source repo** (wherever you cloned it — e.g.
 `~/work/mytra/workflow-kit/`; the directory that contains this command's sibling
@@ -22,12 +22,14 @@ human-edited files (never clobber a customized `repo-profile.md`).
    - `commands/spec.md`          ← from `<KIT>/commands/spec.md`
    - `commands/execute.md`       ← from `<KIT>/commands/execute.md`
    - `commands/review.md`        ← from `<KIT>/commands/review.md`
+   - `commands/debug.md`         ← from `<KIT>/commands/debug.md`
    - `workflows/spec.js`         ← from `<KIT>/workflows/spec.js`
    - `workflows/execute.js`      ← from `<KIT>/workflows/execute.js`
    - `workflows/review.js`       ← from `<KIT>/workflows/review.js`
-     These three are the **native workflow scripts** the commands launch via the
+   - `workflows/debug.js`        ← from `<KIT>/workflows/debug.js`
+     These four are the **native workflow scripts** the commands launch via the
      Workflow tool; they go in `.claude/workflows/` so they resolve as named
-     workflows (`Workflow({name: "spec"|"execute"|"review"})`). Copy all three.
+     workflows (`Workflow({name: "spec"|"execute"|"review"|"debug"})`). Copy all four.
    These are identical across repos; copy verbatim.
 
 **3 — Gitignore the scratch space.** Ensure `.workflows/` is in the repo's
@@ -117,8 +119,8 @@ Mark anything still unverified with `~`. This file is committed and human-mainta
 
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an
-open question. Tell the user they can now run `/spec`, `/execute`, `/review` in
-this repo, and that to pull later kit updates they can run **`/ensemble-update`**
+open question. Tell the user they can now run `/spec`, `/execute`, `/review`, `/debug`
+in this repo, and that to pull later kit updates they can run **`/ensemble-update`**
 (the light path — re-syncs the portable layer, no interview; `--all` updates every
 install at once) or re-run `/ensemble-install` for a full retrofit — neither touches
 `repo-profile.md`.

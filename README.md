@@ -2,16 +2,17 @@
 
 **A coordinated crew of specialist agents — and you.**
 
-Ensemble turns Claude Code's native **Workflow engine** into three repo-aware
-software-development workflows — `/spec`, `/execute`, `/review` — that you drop into
-*any* repository. They read the repo, tune themselves to it, fan out specialist
-subagents, adversarially verify their own findings, and keep **you** in the
+Ensemble turns Claude Code's native **Workflow engine** into four repo-aware
+software-development workflows — `/spec`, `/execute`, `/review`, `/debug` — that you
+drop into *any* repository. They read the repo, tune themselves to it, fan out
+specialist subagents, adversarially verify their own findings, and keep **you** in the
 decisions. Orchestrated agents; human-owned calls.
 
 ```
-/spec     idea     →  an implementation-ready spec, grounded in your code
-/execute  spec     →  you lock "done", the loop builds until every criterion is proven
-/review   pr|branch →  the change mapped, the calls yours to make
+/spec     idea       →  an implementation-ready spec, grounded in your code
+/execute  spec       →  you lock "done", the loop builds until every criterion is proven
+/review   pr|branch  →  the change mapped, the calls yours to make
+/debug    bug report →  reproduced, root-caused, and a route to the fix — you decide whether to take it
 ```
 
 ---
@@ -34,15 +35,16 @@ built on three principles that keep it grounded and keep you involved:
 
 ---
 
-## The three workflows
+## The four workflows
 
 | Command | Phases | You get |
 |---|---|---|
 | **`/spec`** | Scope → Gather (parallel explorers) → Draft → adversarial Critique | An implementation-ready spec with testable criteria, anchored to real code |
 | **`/execute`** | Lock criteria with you → Plan → **Implement ⇄ independent Verify loop** → Checks | Working code. You confirm the passing criteria once up front; the loop runs autonomously to them (looping while it makes progress, not for a fixed count) and exits **complete / needs-you / blocked** — it won't report done until every criterion **and** your repo's mandatory evidence (a passing test, a UI screenshot) are proven |
 | **`/review`** | Shape → Review → Verify → Checks | A Change Map (chat + visual artifact), findings tagged bug / judgment / intent-question, and a verdict **you** set |
+| **`/debug`** | Locate → **Reproduce (always)** → Investigate (one per hypothesis) → adversarial Verify | A documented root cause backed by a real reproduction (the failing test/output), the alternatives it ruled out, and an evidence-backed **route to a fix** — which you hand to `/execute` or `/spec`. It diagnoses; it doesn't fix |
 
-All three **scale to the work** — a tiny change spawns a couple of agents; "audit this
+All four **scale to the work** — a tiny change spawns a couple of agents; "audit this
 thoroughly" spawns adversarial panels — bounded by your token budget.
 
 ---
@@ -91,6 +93,8 @@ requirements**), and writes `.claude/ensemble/repo-profile.md`.
 /execute  .workflows/spec-refresh-rotation.md # → builds it, looping until proven
 /review                                        # → reviews the current branch
 /review   1234                                 # → reviews PR #1234
+/debug    "uploads >10MB 500 intermittently"  # → reproduces it, root-causes it, → .workflows/debug-*.md
+/debug    4567                                 # → diagnoses the bug in issue #4567
 ```
 
 ### Keep installs current
@@ -138,10 +142,10 @@ This is the human-in-the-loop model in action:
     CONTRACT.md                portable operating contract (identical everywhere)
     repo-profile.md            this repo's profile — the only per-repo file
   commands/
-    spec.md  execute.md  review.md
+    spec.md  execute.md  review.md  debug.md
   workflows/
-    spec.js  execute.js  review.js   resolve as Workflow({name:"…"})
-<repo>/.workflows/             ← gitignored scratch — recon.md · spec-*.md · review-*.md
+    spec.js  execute.js  review.js  debug.js   resolve as Workflow({name:"…"})
+<repo>/.workflows/             ← gitignored scratch — recon.md · spec-*.md · review-*.md · debug-*.md
 ```
 
 The **only** per-repo file you maintain is `repo-profile.md`. Everything else is the
