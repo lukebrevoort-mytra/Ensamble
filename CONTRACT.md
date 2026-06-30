@@ -1,7 +1,7 @@
 # Ensemble — Shared Contract
 
-The portable operating rules and output format shared by `/spec`, `/execute`, and
-`/review`. **Read this once at the start of any workflow, then obey it for the whole
+The portable operating rules and output format shared by `/ensemble-spec`, `/ensemble-execute`, and
+`/ensemble-review`. **Read this once at the start of any workflow, then obey it for the whole
 run.** It is intentionally generic — nothing here names a language, framework, or
 repo. Everything repo-specific lives in `repo-profile.md` (written by the retrofit)
 and in the ephemeral `.workflows/recon.md` cache.
@@ -24,7 +24,7 @@ something, say so explicitly and label it. The reader must always be able to tel
 
 These workflows are **centered on Claude's native Workflow tool**. The pieces:
 
-- A **command** (`/spec` `/execute` `/review`) is a *thin launcher* that runs in the
+- A **command** (`/ensemble-spec` `/ensemble-execute` `/ensemble-review`) is a *thin launcher* that runs in the
   main agent: it loads context, resolves the target, then **calls the Workflow
   tool** with a named workflow and an `args` payload. A command instructing this
   call is what authorizes the Workflow tool's opt-in.
@@ -161,7 +161,7 @@ PER-AGENT part after a delimiter.
 6. **Role** — the one specialist hat this agent wears.
 7. **Orient first** — read the in-scope files end-to-end and the actual diff/hunks.
 8. **Upstream context** (optional, `context` param) — a map an earlier phase already
-   produced (`/review`'s Change Map, `/spec`'s scope findings, `/execute`'s plan
+   produced (`/ensemble-review`'s Change Map, `/ensemble-spec`'s scope findings, `/ensemble-execute`'s plan
    notes), threaded in so the agent **reuses** it instead of re-deriving the whole
    change. Reusing upstream work is the cheapest token saving there is.
 9. **Single job** — the one narrow question it must answer.
@@ -217,7 +217,7 @@ Three orthogonal dials decide what a run costs. Always launch; never fix the siz
 - **Cost mode — how much to spend looking.** `eco | balanced | max` (default
   `balanced`), passed as `args.costMode`, orthogonal to scale. It shifts the per-agent
   **effort** one rung (§4.9) and the discretionary **fan-out caps** (eco tightens, max
-  loosens). Where cheaping out risks correctness — e.g. `/execute`'s implement→verify
+  loosens). Where cheaping out risks correctness — e.g. `/ensemble-execute`'s implement→verify
   loop — cost mode touches effort only and never cuts the loop short.
   `thorough eco` is valid and useful: wide coverage at low effort.
 - **Escalation ladder — spend the panel only where it's earned.** Verification runs
@@ -249,16 +249,16 @@ era lacked. The canonical shapes the scripts use:
 - **Checks** — `{ checks: [{name, command, result: pass|fail|blocked, keyLine}],
   invariantGates: [{invariant, command, result, evidence}] }`
 - **Spec** — `{ problem, acceptanceCriteria: [{id, criterion, verifyBy}],
-  affectedAreas, approach, testStrategy, risks, openQuestions }` (see `spec.js`).
+  affectedAreas, approach, testStrategy, risks, openQuestions }` (see `ensemble-spec.js`).
 - **TaskLedger** — `{ exitState: complete|needs-you|blocked, criteria: [{id,
   criterion, satisfied}], tasks: [{id, criterionIds, status, rounds, evidence}],
-  decisions, converged, stopReason }` (see `execute.js`, §4.8).
+  decisions, converged, stopReason }` (see `ensemble-execute.js`, §4.8).
 
 A workflow returns one structured object; the command turns it into the §6 report.
 
 ### 4.8 The execute loop — locked criteria, independent verify, progress-based exit
 
-`/execute` is the kit's loop-engineering primitive: the human defines "done" **once**,
+`/ensemble-execute` is the kit's loop-engineering primitive: the human defines "done" **once**,
 up front, and the loop then runs autonomously to it. Three properties make that
 autonomy *trustworthy* rather than a way to launder a wrong result:
 
@@ -267,7 +267,7 @@ good as its exit condition, so the criteria are confirmed with the human in the
 *launcher* before any code is written, then frozen for the run. The launcher assembles
 candidates from the spec's acceptance criteria + the applicable **mandatory
 requirements** + **invariant gate tests** in blast radius + the repo's **essential
-success tests**, confirms them with the human (adaptively — light when `/spec` already
+success tests**, confirms them with the human (adaptively — light when `/ensemble-spec` already
 vetted them, fuller for a raw request; §4.10), and passes the locked set as
 `args.criteria` (`[{id, criterion, verifyBy, source}]`). The script **decomposes
 against these criteria; it never re-authors them.** If reality diverges (a criterion is
@@ -298,7 +298,7 @@ The loop ends in exactly one of **three exit states**, each a distinct handoff:
 
 The **mandatory requirements** are one input to the locked criteria *and* a final
 evidence gate: a verifier checks the required evidence was produced; if it's missing the
-work loops back until it exists (or is recorded BLOCKED ⛔). In `/review`, an unmet
+work loops back until it exists (or is recorded BLOCKED ⛔). In `/ensemble-review`, an unmet
 mandatory requirement means the verdict **cannot be APPROVE** — `REQUEST CHANGES` if
 fixable, `BLOCK` if the evidence can't be gathered. "Mandatory" means mandatory: the
 workflow never papers over a missing requirement, and never reports `complete` without it.
@@ -329,7 +329,7 @@ session model. This is one more axis of tuning the workflow to the repo: a giant
 monorepo can make broad `gather` cheaper; a sim-heavy repo can make `verify` stronger
 — without editing a script.
 
-**Per-task effort (`/execute` only).** Within the Implement phase, effort can vary *per
+**Per-task effort (`/ensemble-execute` only).** Within the Implement phase, effort can vary *per
 task*, not just per phase. The Plan agent — which already reasons about each task as it
 decomposes the work — tags every task with an `effort` rating for how hard its
 *implementation* is. The Implement fan-out honours that rating as a **nudge** around the
@@ -338,10 +338,10 @@ mechanical one-liner to `low` or raise the gnarly refactor to `high`, but it can
 bottom-out a hard task or burn `max` on a triviality — the phase tier stays the anchor and
 the assessment only redistributes effort across tasks around it. It costs **no extra agent**
 (the rating rides on the plan that already happens), never touches `model`, and the cost dial
-still shifts the anchor underneath it. This stays `/execute`-specific on purpose: per-task
+still shifts the anchor underneath it. This stays `/ensemble-execute`-specific on purpose: per-task
 effort earns its place only where task difficulty genuinely varies *and* an upstream phase
-already assesses each item. `/spec`'s exploration (`gather` is the cheap phase) and
-`/review`'s lenses (each deserves uniform scrutiny) meet neither test, so they keep a flat
+already assesses each item. `/ensemble-spec`'s exploration (`gather` is the cheap phase) and
+`/ensemble-review`'s lenses (each deserves uniform scrutiny) meet neither test, so they keep a flat
 per-phase tier — extending the dial there would be cost without signal.
 
 ### 4.10 Human-in-the-loop — comprehension first, decisions owned by the user
@@ -352,8 +352,8 @@ This is what turns a sweeping report into a collaboration instead of a verdict h
 down — the fix for "I didn't feel involved":
 
 - **Intake (before the workflow):** confirm who the user is and capture what only they
-  know — for `/review`, author-vs-reviewer, plus focus / intent / out-of-scope; for
-  `/execute`, **lock the passing criteria** (§4.8) so the loop runs to a human-confirmed
+  know — for `/ensemble-review`, author-vs-reviewer, plus focus / intent / out-of-scope; for
+  `/ensemble-execute`, **lock the passing criteria** (§4.8) so the loop runs to a human-confirmed
   definition of "done" — and pass it in `args` so every agent's brief honors it. A sweep
   the user never shaped — or a loop whose "done" the user never set — is exactly what
   makes them feel uninvolved.
@@ -432,8 +432,8 @@ If a section is empty, write "none" rather than deleting it — absence is a sig
 Alongside this inline report, every command also renders a **visual HTML artifact**
 (via the Artifact tool, house style: Fraunces + Spline Sans, warm neutrals, one
 terracotta accent, render-on-first-paint, no external assets) so the outcome is
-legible at a glance rather than read as raw return data: `/spec` → the spec sheet,
-`/execute` → the task ledger, `/review` → the change map. The workflow still returns
+legible at a glance rather than read as raw return data: `/ensemble-spec` → the spec sheet,
+`/ensemble-execute` → the task ledger, `/ensemble-review` → the change map. The workflow still returns
 data only; the artifact is presentation the command adds after the run is done.
 
 ---
@@ -445,7 +445,7 @@ Scripts can't write files; the **command** writes them after the workflow return
 - Durable output goes under **`.workflows/`** in the repo root, which is
   **gitignored** (the installer adds it) — scratch/handoff space, not a deliverable.
   - `.workflows/recon.md` — cached repo profile (§2 output).
-  - `.workflows/spec-<slug>.md` — specs (handoff from `/spec` to `/execute`).
+  - `.workflows/spec-<slug>.md` — specs (handoff from `/ensemble-spec` to `/ensemble-execute`).
   - `.workflows/review-<slug>.md` — review reports.
 - Always **also print the report inline** in chat; the file is for handoff/re-use.
 - The only committed, human-maintained files are this `CONTRACT.md`, the command

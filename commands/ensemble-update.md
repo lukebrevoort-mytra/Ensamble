@@ -9,8 +9,8 @@ recon/interview and **without ever touching** the per-repo `repo-profile.md` or 
 repos." It is mechanical (file copy + validate) — no agents, no Workflow tool.
 
 The portable layer = these 9 files, copied verbatim:
-`CONTRACT.md → .claude/ensemble/CONTRACT.md`, `commands/{spec,execute,review,debug}.md →
-.claude/commands/`, `workflows/{spec,execute,review,debug}.js → .claude/workflows/`.
+`CONTRACT.md → .claude/ensemble/CONTRACT.md`, `commands/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.md →
+.claude/commands/`, `workflows/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.js → .claude/workflows/`.
 
 ## 1 — Locate the source kit (`<KIT>`)
 Resolve `<KIT>` (the Ensemble repo that holds `commands/`, `workflows/`, `templates/`),
@@ -20,7 +20,7 @@ in this order — stop at the first that resolves:
 3. **auto-detect** from this command's own install: `readlink ~/.claude/commands/ensemble-install.md`
    (or `ensemble-update.md`) → `<KIT>/commands/…` → `<KIT>` is its grandparent dir.
    This is the robust default since the management commands are symlinked out of the kit.
-Confirm `<KIT>/workflows/execute.js` exists; if you can't resolve `<KIT>`, stop and ask.
+Confirm `<KIT>/workflows/ensemble-execute.js` exists; if you can't resolve `<KIT>`, stop and ask.
 
 **Pull latest** unless told `--no-pull`: `git -C <KIT> pull --ff-only`. If the kit has
 uncommitted changes or the pull isn't fast-forward, skip it and note that you're syncing
@@ -57,7 +57,7 @@ to the kit's, so validating the source proves the copies). Report pass/fail. If 
 For each target, compare the section headers in `<KIT>/templates/repo-profile.template.md`
 against the repo's `repo-profile.md`. Report any template section the profile is **missing**
 (e.g. a freshly-added `## Essential success tests`) as a suggested manual addition — these
-unlock new behavior (that section seeds `/execute`'s criteria lock). **Never auto-edit the
+unlock new behavior (that section seeds `/ensemble-execute`'s criteria lock). **Never auto-edit the
 profile**; just tell the user which repos would benefit from a quick `/ensemble-install`
 re-interview or a hand-edit.
 
@@ -65,7 +65,7 @@ re-interview or a hand-edit.
 Emit a compact summary:
 - the resolved `<KIT>` + whether it was pulled (and to which commit, via `git -C <KIT> rev-parse --short HEAD`);
 - a per-repo line: `repo — N files updated (names), M current; validate ✓; tracked/untracked; profile gaps: <sections or none>`;
-- the bottom line + next step (e.g. "run `/spec`/`/execute` to use the updates"; for tracked `.claude/`, "commit the synced files in <repo>").
+- the bottom line + next step (e.g. "run `/ensemble-spec`/`/ensemble-execute` to use the updates"; for tracked `.claude/`, "commit the synced files in <repo>").
 
 In `--check` mode, report exactly the same staleness picture but state clearly that
 nothing was written.
