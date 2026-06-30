@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'execute',
+  name: 'ensemble-execute',
   description: 'Loop-engineering executor: run an autonomous implement↔verify loop against a LOCKED set of passing criteria, looping (independent verify) until every criterion is proven with evidence or the loop hands back to you — exits complete / needs-you / blocked',
   phases: [
     { title: 'Plan', detail: 'decompose the work into tasks, each mapped to a locked acceptance criterion (criteria are the immutable contract — not invented here)' },
@@ -17,7 +17,7 @@ const A = typeof args === 'string' ? (args.trim() ? JSON.parse(args) : {}) : (ar
 const profile    = (A && A.profile)    || ''
 const profileDigest = (A && A.profileDigest) || ''   // compact orientation for fan-out (implement/verify) agents (CONTRACT §4.3); '' → fall back to full profile
 const recon      = (A && A.recon)       || ''
-const spec       = (A && A.spec)        || ''   // resolved spec text, passed by /execute
+const spec       = (A && A.spec)        || ''   // resolved spec text, passed by /ensemble-execute
 const criteria   = (A && A.criteria)    || []   // LOCKED, human-confirmed passing criteria: [{id, criterion, verifyBy, source}] (CONTRACT §4.8)
 const commands   = (A && A.commands)    || {}
 const roster     = (A && A.roster)      || []
@@ -34,7 +34,7 @@ const scale = scaleArg === 'audit' ? 'thorough' : scaleArg   // 'audit' = the he
 // stuck-detector (a round that closes nothing new and repeats the same feedback) —
 // well before this cap. It survives so a pathological oscillation can't run unbounded.
 const MAX_ROUNDS = scale === 'quick' ? 3 : scale === 'thorough' ? 6 : 5
-// Cost mode (CONTRACT §4.6) — orthogonal $ dial over `scale`. For /execute it shifts only
+// Cost mode (CONTRACT §4.6) — orthogonal $ dial over `scale`. For /ensemble-execute it shifts only
 // per-agent EFFORT (below); the loop's progress-based termination is untouched — cutting the
 // loop short to save money risks shipping unconverged code, the wrong place to economise.
 const costMode = (A && A.costMode) || 'balanced'             // 'eco' | 'balanced' | 'max'
@@ -189,7 +189,7 @@ const REQUIREMENTS_SCHEMA = {
   },
 }
 
-if (!spec) return { error: 'No spec provided — /execute needs a spec path or text.' }
+if (!spec) return { error: 'No spec provided — /ensemble-execute needs a spec path or text.' }
 
 // ── Phase 1: Plan — decompose into tasks mapped to the LOCKED criteria. ────────
 // The criteria are the immutable contract for this run; the planner consumes them,

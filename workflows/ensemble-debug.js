@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'debug',
+  name: 'ensemble-debug',
   description: 'Diagnose a bug from a bug report: locate it and form ranked root-cause hypotheses, ALWAYS try to reproduce it with real failing evidence, fan out one investigator per hypothesis grounded in that evidence, adversarially confirm the leading diagnosis, and hand back a documented root cause + an evidence-backed route to a fix (it diagnoses; it does not fix)',
   phases: [
     { title: 'Locate', detail: 'read the bug report + repo: affected areas, ranked root-cause hypotheses, and how to reproduce it' },
@@ -11,7 +11,7 @@ export const meta = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Repo context arrives via `args`. The script's sandbox cannot read the
-// filesystem or run git (CONTRACT §4.2), so the /debug command gathers all
+// filesystem or run git (CONTRACT §4.2), so the /ensemble-debug command gathers all
 // static repo knowledge and passes it in. The agents we spawn are NOT sandboxed
 // — they read files, run the repo's tests, reproduce the bug, and call MCP tools.
 //
@@ -81,7 +81,7 @@ Object.keys(phasePolicy).forEach(k => { if (!(k in DEFAULT_TIER)) log(`phasePoli
 
 // ── The standard brief (CONTRACT §4.3). EVERY agent prompt is built here so no
 // subagent is "naked": each re-orients on repo context, knows its tools, and is
-// anchored to the ONE bug we're chasing (run-wide human context — like /review's
+// anchored to the ONE bug we're chasing (run-wide human context — like /ensemble-review's
 // intent/focus, this stays constant for the whole run). ───────────────────────
 // Ordering (CONTRACT §4.3): the STATIC preamble (profile/digest, recon, tools, the bug
 // report, evidence discipline) comes first; PER-AGENT text (role, scope, upstream
@@ -124,7 +124,7 @@ function brief({ role, scope, question, evidence, schemaNote, context, fullProfi
 // LOCATE = where the bug lives + ranked hypotheses + how to reproduce it.
 const LOCATE_SCHEMA = {
   type: 'object',
-  // Keep the required set MINIMAL (mirrors review.js's SHAPE rationale): only the routing
+  // Keep the required set MINIMAL (mirrors ensemble-review.js's SHAPE rationale): only the routing
   // signal the script can't proceed without. Hypotheses drive the fan-out; the repro
   // strategy drives the always-on Reproduce phase. The rest is best-effort.
   required: ['hypotheses', 'reproStrategy'],
@@ -175,7 +175,7 @@ const INVESTIGATE_SCHEMA = {
     location: { type: 'string', description: 'file:line of the root cause' },
     mechanism: { type: 'string', description: 'how this cause produces the REPRODUCED failure — tie it to the observed evidence, not theory' },
     evidence: { type: 'array', items: { type: 'string' }, description: 'file:line + how each links to the reproduction' },
-    proposedFix: { type: 'object', description: 'a ROUTE to a fix (not the fix itself — /debug diagnoses, it does not implement)', properties: {
+    proposedFix: { type: 'object', description: 'a ROUTE to a fix (not the fix itself — /ensemble-debug diagnoses, it does not implement)', properties: {
       summary: { type: 'string' }, approach: { type: 'string' },
       files: { type: 'array', items: { type: 'string' } },
       handoff: { type: 'string', enum: ['execute', 'spec'], description: 'execute if the route is concrete; spec if it needs design first' } } },
@@ -192,8 +192,8 @@ const VERDICT_SCHEMA = {
 const RANK = { high: 3, med: 2, low: 1 }
 
 // Fail fast on an empty/whitespace-only report — before spending any agent
-// (mirrors spec.js / execute.js guards). /debug is useless without a symptom.
-if (!bugReport.trim()) return { error: 'No bug report provided — /debug needs a description of the bug (symptom, repro steps, env, logs) to diagnose.' }
+// (mirrors ensemble-spec.js / ensemble-execute.js guards). /ensemble-debug is useless without a symptom.
+if (!bugReport.trim()) return { error: 'No bug report provided — /ensemble-debug needs a description of the bug (symptom, repro steps, env, logs) to diagnose.' }
 
 if (!(A && A.profile) && !profileDigest) log('No repo profile in args — agents will detect conventions from neighbouring files.')
 log(`Debugging: ${bugReport.slice(0, 80)}${bugReport.length > 80 ? '…' : ''} (scale=${scale}, cost=${costMode})`)
@@ -211,7 +211,7 @@ const located = await agent(
   }),
   { schema: LOCATE_SCHEMA, phase: 'Locate', label: 'locate', ...compute('Locate') }
 )
-if (!located) return { error: 'Could not locate the bug — re-run /debug with more detail (exact symptom, repro steps, affected area, or a stack trace).' }
+if (!located) return { error: 'Could not locate the bug — re-run /ensemble-debug with more detail (exact symptom, repro steps, affected area, or a stack trace).' }
 
 const hypotheses = (located.hypotheses || []).filter(h => h && h.id)
 const reproStrategy = located.reproStrategy || { approach: 'follow the bug report and construct a minimal failing case' }

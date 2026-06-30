@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'review',
+  name: 'ensemble-review',
   description: 'Repo-aware code review built for human involvement: map the change\'s shape, fan out specialist reviewers, separate facts from judgment calls, verify the bugs, and hand back a Change Map + decisions the user owns',
   phases: [
     { title: 'Shape', detail: 'map the change: intent, structure, reading order, hotspots + risk lenses & invariants' },
@@ -12,7 +12,7 @@ export const meta = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Repo context arrives via `args`. The script's sandbox cannot read the
-// filesystem or run git (CONTRACT §4.2), so the /review command gathers all
+// filesystem or run git (CONTRACT §4.2), so the /ensemble-review command gathers all
 // static repo knowledge and passes it in. The agents we spawn are NOT sandboxed
 // — they read files, run `git diff`, run tests, and call MCP tools themselves.
 //
@@ -242,7 +242,7 @@ const risk = await agent(
   }),
   { schema: SHAPE_SCHEMA, phase: 'Shape', label: 'shape-map', ...compute('Shape') }
 )
-if (!risk) return { error: 'Shape mapping failed — could not read the diff. Re-run /review or confirm the target resolves to a real diff.' }
+if (!risk) return { error: 'Shape mapping failed — could not read the diff. Re-run /ensemble-review or confirm the target resolves to a real diff.' }
 
 // Reuse the Shape map downstream (CONTRACT §4.3 — context threading): the cartographer
 // already read the whole change, so hand its map to every lens/verifier instead of
@@ -346,7 +346,7 @@ async function runChecks() {
 
 // ── verify this repo's mandatory requirements were actually satisfied for this
 // diff (CONTRACT §4.8 — these were decided by the user at install). Missing
-// evidence is what /execute's verify loop sends back; here it gates the verdict.
+// evidence is what /ensemble-execute's verify loop sends back; here it gates the verdict.
 async function checkRequirements() {
   if (!mandatory.length) return { requirements: [] }
   if (!budgetOk()) { log('Budget low — skipping mandatory-requirements gate'); return { requirements: [] } }

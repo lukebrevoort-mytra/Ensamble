@@ -1,12 +1,12 @@
 ---
-description: Execution loop — lock the passing criteria with you, then run the native `execute` workflow (an autonomous implement↔verify loop that runs until every criterion is proven with evidence or it hands back to you) and render the task ledger
+description: Execution loop — lock the passing criteria with you, then run the native `ensemble-execute` workflow (an autonomous implement↔verify loop that runs until every criterion is proven with evidence or it hands back to you) and render the task ledger
 ---
 
 You are the **thin launcher** for the Execution loop — the kit's loop-engineering
 centerpiece. You do **not** implement the spec yourself. You resolve the spec,
 **lock the passing criteria with the human** (the loop's immutable definition of
 "done"), ensure a safe branch, then **call the native Workflow tool** to run the
-`execute` orchestration — an autonomous implement→**independent verify**→loop-back
+`ensemble-execute` orchestration — an autonomous implement→**independent verify**→loop-back
 cycle that runs until every locked criterion is proven with evidence, or until it
 must hand back to you — and render its task ledger.
 The fact that this command instructs you to call `Workflow` is what authorizes its
@@ -43,7 +43,7 @@ Resolve `$ARGUMENTS` to a spec: a path (e.g. `.workflows/spec-*.md`) → read it
 pasted spec text → use it; a raw request with no spec → produce a lightweight inline
 spec first (problem + testable acceptance criteria + test strategy). Pass the spec
 text in as `spec`. Note where it came from — it sets how heavy §4 is. Also parse an
-optional cost hint (`eco`/`max` → `costMode`, default `balanced`); for `/execute` it
+optional cost hint (`eco`/`max` → `costMode`, default `balanced`); for `/ensemble-execute` it
 shifts per-agent effort only — the loop's progress-based termination is untouched
 (CONTRACT §4.6).
 
@@ -63,7 +63,7 @@ move the goalposts. Do this in three moves:
 
 **b. Confirm with the human — scale the weight to what's already vetted** (CONTRACT
 §4.10; this is the adaptive lock):
-- **Spec came from `/spec`** (its criteria were already critiqued) → show the assembled
+- **Spec came from `/ensemble-spec`** (its criteria were already critiqued) → show the assembled
   set and ask **one** light `AskUserQuestion`: *"Here's exactly what the loop will treat
   as 'done' and won't stop until it proves each with evidence. Right as-is, or is there
   an essential test / edge case / check I'm missing?"* — easy to wave through.
@@ -85,7 +85,7 @@ branch first (never implement on `main`/`master`). Record the branch name to pas
 
 ## 6 — Launch the native workflow
 Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
-- `Workflow({ name: "execute", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/execute.js", args })`
+- `Workflow({ name: "ensemble-execute", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/ensemble-execute.js", args })`
 
 with `args` =
 ```
@@ -121,10 +121,10 @@ different handoff. Render two things:
    mandatory requirements with their status, and the recommended next action. Give its URL.
 
 Then branch on `exitState`:
-- **`complete`** → all criteria proven; recommend `/review` of the branch.
+- **`complete`** → all criteria proven; recommend `/ensemble-review` of the branch.
 - **`needs-you`** → lead with `stopReason`. If `decisions[]` is non-empty, present each as
   a real choice to the user (the loop stopped because the criterion is ambiguous or needs a
-  call only they can make) — answer it, then re-run `/execute` so the loop continues with
+  call only they can make) — answer it, then re-run `/ensemble-execute` so the loop continues with
   the decision settled. Otherwise list the unfinished tasks + unmet criteria + last feedback
   and recommend the next step (re-run with more budget, or escalate a hard task to deep-debug).
 - **`blocked`** → lead with the external blocker(s) from `stopReason`/`blockers`; list what
