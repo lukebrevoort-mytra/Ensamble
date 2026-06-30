@@ -334,6 +334,34 @@ _PATH_TOOLS = {"Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "MultiEd
 _ERR_HINT = ("error", "traceback", "exception", "exit 1", "exit code 1", "failed",
              "fatal:", "no such file", "permission denied", "not found", "✗")
 
+_HEAD_RE = re.compile(r"^\s*#{1,6}\s+(.*)")
+_BULLET_RE = re.compile(r"^\s*([-*•]|\d+[.)])\s+(.*)")
+def _md_clean(s): return re.sub(r"\*\*|__|`", "", " ".join(s.split())).strip()
+
+def _reason_lines(text, width):
+    """Render a reasoning block readably: keep paragraph/heading/bullet structure
+    instead of collapsing it into one wall of text."""
+    out, started = [], [False]
+    def gut():  # ✎ only on the first content line; continuous gutter after
+        g = " ✎ " if not started[0] else "   "
+        started[0] = True
+        return [("mgb", "▎"), ("mg", g)]
+    for para in text.replace("\r", "").split("\n"):
+        raw = para.strip()
+        if not raw:
+            out.append([("mgb", "▎")]); continue          # blank line keeps the gutter
+        mh, mb = _HEAD_RE.match(raw), _BULLET_RE.match(raw)
+        if mh:
+            for ln in textwrap.wrap(_md_clean(mh.group(1)), max(12, width - 5)) or [""]:
+                out.append(gut() + [("cyb", ln)])          # heading → bold cyan
+        elif mb:
+            for j, ln in enumerate(textwrap.wrap(_md_clean(mb.group(2)), max(10, width - 8)) or [""]):
+                out.append(gut() + [("dim", "• " if j == 0 else "  "), ("th", ln)])
+        else:
+            for ln in textwrap.wrap(_md_clean(raw), max(12, width - 5)) or [""]:
+                out.append(gut() + [("th", ln)])
+    return out
+
 def event_segments(r, width, reasoning_only, raw):
     """One event → list of display lines; each line is [(color_name, text), …].
     Reasoning gets a 'thinking' gutter; tool calls/results get role colors."""
@@ -343,9 +371,7 @@ def event_segments(r, width, reasoning_only, raw):
             t = b.get("type")
             if t == "text" and b.get("text", "").strip():
                 lines.append([])  # spacer above a thinking block
-                wrapped = textwrap.wrap(" ".join(b["text"].split()), max(12, width - 5))
-                for j, ln in enumerate(wrapped):
-                    lines.append([("mgb", "▎"), ("mg", " ✎ " if j == 0 else "   "), ("th", ln)])
+                lines += _reason_lines(b["text"].strip(), width)
             elif t == "tool_use" and not reasoning_only:
                 name = b.get("name", "?")
                 summ = tool_summary(name, b.get("input", {}))
@@ -439,25 +465,45 @@ def _short_repo(d):
     if slug in ('-Users-luke', ''): slug = 'home'
     return slug.lstrip('-')
 
+_NAME_CACHE = {}
+def run_name(run_dir):
+    """Human name for a run: the workflow's meta.name (e.g. 'execute', 'review').
+    Live runs get it from the persisted script filename; completed runs from the
+    state file's workflowName. Falls back to the wf_ id. Cached (names are stable)."""
+    if run_dir in _NAME_CACHE: return _NAME_CACHE[run_dir]
+    rid = os.path.basename(run_dir)
+    session = os.path.dirname(os.path.dirname(os.path.dirname(run_dir)))
+    name = None
+    for f in glob.glob(os.path.join(session, "workflows", "scripts", "*" + rid + "*.js")):
+        base = os.path.basename(f)[:-3]
+        name = base[:-len("-" + rid)] if base.endswith("-" + rid) else base
+        break
+    if not name:
+        try: name = json.load(open(os.path.join(session, "workflows", rid + ".json"))).get("workflowName")
+        except (OSError, ValueError): pass
+    if name and name != rid: _NAME_CACHE[run_dir] = name  # don't cache the bare-id fallback
+    return name or rid
+
 def _draw_runs(win, runs, sel, cur_dir):
     win.erase(); h, w = win.getmaxyx()
     _bar(win, 0, w, f"workflow runs   {len(runs)} found", "pick a run", attr=ATTR["bar"])
     for i, (mt, d, n) in enumerate(runs):
         y = 2 + i
         if y >= h - 1: break
-        rid = os.path.basename(d)
+        nm = run_name(d)[:26]
         live = (time.time() - mt) < 12
         tag = "● live" if live else ago(mt)
+        sid = os.path.basename(d).replace("wf_", "")[:8]   # short id disambiguates same-named runs
         mark = "▶" if d == cur_dir else " "
         if i == sel:
-            row = f"{mark} {rid:<20} {n:>2} agents  {tag:<10} {_short_repo(d)}"
+            row = f"{mark} {nm:<26} {n:>2} agents · {tag:<8} · {_short_repo(d)} · {sid}"
             try: win.addstr(y, 0, row[:w - 1], curses.A_REVERSE | curses.A_BOLD)
             except curses.error: pass
         else:
-            _put(win, y, 0, [("", f"{mark} "), ("cyb", f"{rid:<20}"),
-                             ("dim", f" {n:>2} agents  "),
-                             ("ye" if live else "dim", f"{tag:<10}"),
-                             ("dim", f" {_short_repo(d)}")], w)
+            _put(win, y, 0, [("", f"{mark} "), ("cyb", f"{nm:<26}"),
+                             ("dim", f" {n:>2} agents · "),
+                             ("ye" if live else "dim", f"{tag:<8}"),
+                             ("dim", f" · {_short_repo(d)} · {sid}")], w)
     _bar(win, h - 1, w, "↑↓/jk select · ⏎ open run · q quit", attr=ATTR["barfoot"])
     win.noutrefresh()
 
@@ -508,6 +554,8 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
 
 def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect, pin=False):
     curses.curs_set(0); stdscr.timeout(350)  # also the animation tick for the crab band
+    try: curses.set_escdelay(25)             # Esc exits as fast as 'b' (default delay is ~1s)
+    except (AttributeError, curses.error): pass
     curses.start_color(); curses.use_default_colors()
     for i, (nm, fg) in enumerate([("cy", curses.COLOR_CYAN), ("gr", curses.COLOR_GREEN),
                                   ("ye", curses.COLOR_YELLOW), ("mg", curses.COLOR_MAGENTA),
