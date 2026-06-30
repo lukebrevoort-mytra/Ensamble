@@ -6,6 +6,7 @@ export const meta = {
     { title: 'Review', detail: 'one specialist per matched roster role / risk lens; tag findings bug | judgment | intent-question' },
     { title: 'Verify', detail: 'adversarially refute objective bugs; judgment & intent-questions pass to the human' },
     { title: 'Checks', detail: 'run canonical build/typecheck/lint/tests + invariant gate tests' },
+    { title: 'Completeness', detail: 'independent critic: what did the sweep miss — uncovered file, dropped lens, unverified claim' },
   ],
 }
 
@@ -59,7 +60,7 @@ const budgetOk = () => !budget.total || budget.remaining() > 40_000
 // pin a model only when the repo genuinely warrants it (model is never defaulted —
 // absent → inherit the session model).
 const phasePolicy = (A && A.phasePolicy) || {}   // { phase(lowercase): {effort, model} }
-const DEFAULT_TIER = { shape: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' } }
+const DEFAULT_TIER = { shape: { effort: 'high' }, review: { effort: 'medium' }, verify: { effort: 'high' }, checks: { effort: 'low' }, completeness: { effort: 'high' } }
 // Cost mode shifts the DEFAULT effort one rung (eco down / max up); an explicit profile
 // pin always wins (the repo's deliberate choice beats a per-run dial — mirrors model pinning).
 const EFFORT_LADDER = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -197,6 +198,19 @@ const REQUIREMENTS_SCHEMA = {
   },
 }
 
+// COVERAGE = the completeness critic's verdict on what the sweep MISSED (not new bugs).
+const COVERAGE_SCHEMA = {
+  type: 'object', required: ['gaps'],
+  properties: {
+    gaps: { type: 'array', items: { type: 'object', required: ['area', 'severity', 'why'], properties: {
+      area: { type: 'string', description: 'what was not adequately reviewed: a changed file, subsystem, or risk lens' },
+      severity: { type: 'string', enum: ['high', 'med', 'low'] },
+      why: { type: 'string', description: 'why this gap matters for THIS diff — concrete, not generic' },
+      recommendation: { type: 'string', description: 'how to close it: the lens to run or the check to add' } } } },
+    assessment: { type: 'string', description: 'one line: is review coverage adequate to trust the verdict?' },
+  },
+}
+
 // ── small helpers (no Date/Math.random — sandbox forbids them) ────────────────
 function dedupeBy(arr, keyFn) { const seen = new Set(); return arr.filter(x => { const k = keyFn(x); if (seen.has(k)) return false; seen.add(k); return true }) }
 function agentTypeForLens(lens) { return lens === 'ui' ? 'uiux' : 'general-purpose' }
@@ -251,8 +265,10 @@ const lensJobs = (risk.lenses || [])
   .map(l => ({ key: l, role: GENERIC_LENS[l], agentType: agentTypeForLens(l), scope: changedFiles.join(', ') }))
 
 let jobs = dedupeBy([...rosterJobs, ...lensJobs], j => j.key)
+let droppedLenses = []                                       // lenses cut by the cap — the completeness critic must know what wasn't looked at
 if (jobs.length > LENS_CAP) {
-  log(`Capping ${jobs.length} review lenses to ${LENS_CAP} (scale=${scale}); dropped: ${jobs.slice(LENS_CAP).map(j => j.key).join(', ')}`)
+  droppedLenses = jobs.slice(LENS_CAP).map(j => j.key)
+  log(`Capping ${jobs.length} review lenses to ${LENS_CAP} (scale=${scale}); dropped: ${droppedLenses.join(', ')}`)
   jobs = jobs.slice(0, LENS_CAP)
 }
 if (!jobs.length) jobs = [{ key: 'correctness', role: GENERIC_LENS.correctness, agentType: 'general-purpose', scope: changedFiles.join(', ') }]
@@ -346,11 +362,35 @@ async function checkRequirements() {
   return res || { requirements: [] }
 }
 
-// ── Review+Verify pipeline runs concurrently with the checks (a barrier here is
-// correct: synthesis needs both complete). The pipeline has NO internal barrier
-// — a finding verifies as soon as its lens completes (CONTRACT canonical shape).
+// ── Completeness critic (CONTRACT §4 completeness-critic pattern): one INDEPENDENT
+// agent that judges the sweep's COVERAGE, not its findings — what changed file no
+// lens read, what present risk lens was dropped to the cap, what concern was claimed
+// but never verified. A high gap on a risk-bearing diff has verdict teeth below: it
+// stops a "we never looked" from masquerading as a clean APPROVE. Runs concurrently
+// in the barrier (it depends on the lens list + shape, not on the findings), so it
+// costs one agent and ~zero added wall-clock. Skipped only on the cheapest runs.
+async function checkCompleteness() {
+  if (costMode === 'eco' && scale === 'quick' && !droppedLenses.length) return { gaps: [] }
+  if (!budgetOk()) { log('Budget low — skipping completeness critic'); return { gaps: [] } }
+  const res = await agent(
+    brief({
+      role: 'review-completeness critic',
+      scope: changedFiles.join(', '),
+      question: `The review swept these lenses: [${jobs.map(j => j.key).join(', ')}]${droppedLenses.length ? `, and DROPPED these to a cap: [${droppedLenses.join(', ')}]` : ''}. Risk lenses the cartographer saw present in the diff: [${(risk.lenses || []).join(', ') || 'none'}]. Read the diff yourself and answer ONE question: what did this review MISS? Look for (a) a changed file or subsystem no lens actually covered, (b) a risk lens that is present but was dropped or never ran, (c) a concern claimed but never verified. Report ONLY gaps that matter for THIS diff — if coverage is adequate, return an empty gaps array. Do NOT re-review for new bugs; judge COVERAGE only.`,
+      evidence: 'Name the uncovered file/lens concretely; a vague "could be more thorough" is not a gap.',
+      context: changeMap,
+      fullProfile: true,   // synthesis: it reasons over the whole change + the full lens list
+    }),
+    { schema: COVERAGE_SCHEMA, phase: 'Completeness', label: 'completeness', ...compute('Completeness') }
+  )
+  return res || { gaps: [] }
+}
+
+// ── Review+Verify pipeline runs concurrently with the checks + completeness critic
+// (a barrier here is correct: synthesis needs them all complete). The pipeline has NO
+// internal barrier — a finding verifies as soon as its lens completes (CONTRACT shape).
 phase('Review')
-const [reviewedNested, checkResults, reqResults] = await parallel([
+const [reviewedNested, checkResults, reqResults, coverageResult] = await parallel([
   () => pipeline(
     jobs,
     (job) => agent(
@@ -367,6 +407,7 @@ const [reviewedNested, checkResults, reqResults] = await parallel([
   ),
   () => runChecks(),
   () => checkRequirements(),
+  () => checkCompleteness(),
 ])
 
 // ── Synthesize a SUGGESTED verdict. The launcher renders the Change Map, runs
@@ -382,14 +423,19 @@ const failedGates = (checks.invariantGates || []).filter(g => g.result === 'fail
 const reqs = (reqResults && reqResults.requirements) || []
 const unmetReqs = reqs.filter(r => r.status === 'unmet')      // mandatory evidence not produced — fixable
 const blockedReqs = reqs.filter(r => r.status === 'blocked')  // mandatory evidence couldn't be verified at all
+const coverageGaps = (coverageResult && coverageResult.gaps) || []
+const highGaps = coverageGaps.filter(g => g.severity === 'high')  // a risk lens/file the sweep never covered
 
 let verdictSuggested
 if (failedGates.length || blockedReqs.length) verdictSuggested = 'BLOCK'
 else if (failedChecks.length || unmetReqs.length || sev('high').length || sev('med').length) verdictSuggested = 'REQUEST CHANGES'
-else if (sev('low').length || decisions.length) verdictSuggested = 'APPROVE WITH NITS'
+// A high coverage gap can't be a clean APPROVE — "we never looked" ≠ "we looked, it's fine".
+// It's not a found defect, so it stops short of REQUEST CHANGES; the human decides whether
+// to run the missing lens (CONTRACT §4.10 — they own the verdict).
+else if (sev('low').length || decisions.length || highGaps.length) verdictSuggested = 'APPROVE WITH NITS'
 else verdictSuggested = 'APPROVE'
 
-log(`Done — ${bugs.length} bug(s), ${decisions.length} decision(s) for the human, ${unmetReqs.length + blockedReqs.length} unmet requirement(s); suggested verdict: ${verdictSuggested}`)
+log(`Done — ${bugs.length} bug(s), ${decisions.length} decision(s) for the human, ${unmetReqs.length + blockedReqs.length} unmet requirement(s), ${coverageGaps.length} coverage gap(s) (${highGaps.length} high); suggested verdict: ${verdictSuggested}`)
 
 // What the escalation ladder (§4.6) actually saved vs the old always-N-vote panel, on
 // THIS run's real bug set (a deterministic counterfactual — no second run needed).
@@ -427,12 +473,16 @@ return {
   findings: confirmed,
   checks,
   mandatoryRequirements: reqs,
+  coverageGaps,                                   // what the sweep missed (completeness critic) — the human adjudicates highs
+  coverageAssessment: (coverageResult && coverageResult.assessment) || '',
   coverage: {
     lensesReviewed: jobs.map(j => j.key),
+    lensesDropped: droppedLenses,
     invariantsGated: (checks.invariantGates || []).map(g => g.invariant),
     decisionsForHuman: decisions.length,
     mandatoryUnmet: unmetReqs.map(r => r.requirement),
     mandatoryBlocked: blockedReqs.map(r => r.requirement),
+    coverageGapsHigh: highGaps.map(g => g.area),
     droppedToBudget: !budgetOk(),
   },
 }
