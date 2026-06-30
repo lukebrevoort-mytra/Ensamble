@@ -433,6 +433,34 @@ def _draw_band(win, y0, w, band_h, frame, playing):
         for i in range(n):
             _put(win, y0 + 1, start + i * (cw + gap), [("crab", crab(i))], w)
 
+def _short_repo(d):
+    slug = d.split('/projects/')[-1].split('/')[0]
+    slug = slug.replace('-Users-luke-work-mytra-project-', '').replace('-Users-luke-work-mytra-', '')
+    if slug in ('-Users-luke', ''): slug = 'home'
+    return slug.lstrip('-')
+
+def _draw_runs(win, runs, sel, cur_dir):
+    win.erase(); h, w = win.getmaxyx()
+    _bar(win, 0, w, f"workflow runs   {len(runs)} found", "pick a run", attr=ATTR["bar"])
+    for i, (mt, d, n) in enumerate(runs):
+        y = 2 + i
+        if y >= h - 1: break
+        rid = os.path.basename(d)
+        live = (time.time() - mt) < 12
+        tag = "● live" if live else ago(mt)
+        mark = "▶" if d == cur_dir else " "
+        if i == sel:
+            row = f"{mark} {rid:<20} {n:>2} agents  {tag:<10} {_short_repo(d)}"
+            try: win.addstr(y, 0, row[:w - 1], curses.A_REVERSE | curses.A_BOLD)
+            except curses.error: pass
+        else:
+            _put(win, y, 0, [("", f"{mark} "), ("cyb", f"{rid:<20}"),
+                             ("dim", f" {n:>2} agents  "),
+                             ("ye" if live else "dim", f"{tag:<10}"),
+                             ("dim", f" {_short_repo(d)}")], w)
+    _bar(win, h - 1, w, "↑↓/jk select · ⏎ open run · q quit", attr=ATTR["barfoot"])
+    win.noutrefresh()
+
 def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll, banner, frame):
     """Draw the focused agent. Returns the clamped scroll offset (0 = live tail)."""
     win.erase(); h, w = win.getmaxyx()
@@ -478,7 +506,7 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
     win.noutrefresh()
     return scroll
 
-def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
+def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect, pin=False):
     curses.curs_set(0); stdscr.timeout(350)  # also the animation tick for the crab band
     curses.start_color(); curses.use_default_colors()
     for i, (nm, fg) in enumerate([("cy", curses.COLOR_CYAN), ("gr", curses.COLOR_GREEN),
@@ -517,22 +545,30 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
         focus, scroll, flash, flash_until = fid, 0, f"▶ now following #{idx_of(fid)} · {label_of(fid)}{why}", time.time() + 2.6
 
     infos = roster(run_dir)
+    pinned = pin
+    all_runs = find_runs()[:15]
     mode = "list"; sel = 0; focus = None; scroll = 0; flash = ""; flash_until = 0.0; frame = 0
     if preselect and any(i["id"] == preselect for i in infos):
-        mode, focus = "focus", preselect
+        mode, focus, pinned = "focus", preselect, True
+    elif (not pin) and len(all_runs) > 1:
+        mode = "runs"
 
     while True:
         frame += 1
+        all_runs = find_runs()[:15]
         infos = roster(run_dir)
         complete = bool(infos) and all(i["status"] == "done" for i in infos)
-        if not any(i["status"] == "running" for i in infos):  # adopt a newer run when idle
+        if (not pinned) and mode != "runs" and not any(i["status"] == "running" for i in infos):  # adopt a newer run when idle
             runs = find_runs()
             if runs and runs[0][1] != run_dir and runs[0][0] > newest_mtime(run_dir):
                 run_dir, mode, focus, sel, scroll = runs[0][1], "list", None, 0, 0
                 infos = roster(run_dir)
                 complete = bool(infos) and all(i["status"] == "done" for i in infos)
 
-        if mode == "focus":
+        if mode == "runs":
+            sel = max(0, min(sel, len(all_runs) - 1)) if all_runs else 0
+            _draw_runs(stdscr, all_runs, sel, run_dir)
+        elif mode == "focus":
             a = next((x for x in infos if x["id"] == focus), None)
             if a is None and infos:
                 focus = infos[-1]["id"]
@@ -551,8 +587,18 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
         k = stdscr.getch()
         if k == -1:
             continue
-        if mode == "list":
+        if mode == "runs":
             if k == ord("q"): break
+            elif k in (curses.KEY_UP, ord("k")): sel = max(0, sel - 1)
+            elif k in (curses.KEY_DOWN, ord("j")): sel = min(len(all_runs) - 1, sel + 1)
+            elif k in (curses.KEY_ENTER, 10, 13) and all_runs:
+                run_dir = all_runs[sel][1]
+                mode = "list"; pinned = True; sel = 0; scroll = 0; focus = None
+        elif mode == "list":
+            if k == ord("q"): break
+            elif k in (ord("b"), 27, curses.KEY_LEFT):
+                mode = "runs"
+                sel = next((i for i, (mt, d, n) in enumerate(all_runs) if d == run_dir), 0)
             elif k in (curses.KEY_UP, ord("k")): sel = max(0, sel - 1)
             elif k in (curses.KEY_DOWN, ord("j")): sel = min(len(infos) - 1, sel + 1)
             elif k in (curses.KEY_ENTER, 10, 13) and infos:
@@ -573,8 +619,8 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
             elif k in (curses.KEY_BTAB, ord("p")) and infos:      # Shift-Tab / p → prev
                 goto(infos[max(0, cur - 1)]["id"], "")
 
-def tui(run_dir, reasoning_only=False, raw=False, preselect=None):
-    curses.wrapper(_tui_main, run_dir, reasoning_only, raw, preselect)
+def tui(run_dir, reasoning_only=False, raw=False, preselect=None, pin=False):
+    curses.wrapper(_tui_main, run_dir, reasoning_only, raw, preselect, pin)
 
 # ── cli ───────────────────────────────────────────────────────────────────────
 def main():
@@ -628,11 +674,12 @@ def main():
             print_roster(run_dir, infos); print(f"\nNo agent matches {a.query!r}."); return
         target = sorted(hits, key=lambda i: i["mtime"])[-1]
 
+    pin = bool(a.run or a.n or a.query)
     interactive = sys.stdout.isatty() and not a.stream
     if interactive:  # default — full-screen picker, focus one agent, auto-advance
         try:
             tui(run_dir, reasoning_only=a.reasoning, raw=a.raw,
-                preselect=target["id"] if target else None)
+                preselect=target["id"] if target else None, pin=pin)
             return
         except curses.error:
             interactive = False  # terminal can't do curses — fall through to the streamer
