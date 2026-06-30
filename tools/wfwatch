@@ -424,8 +424,8 @@ def _draw_band(win, y0, w, band_h, frame, playing):
         return l + "(" + eyes + ")" + r + "▢"          # drums — sticks flip to the beat
     _put(win, y0, 0, [("note" if playing else "dim", " " + notes)], w)
     if band_h >= 4:
-        for i in range(n):                            # bob between two rows = groove
-            up = playing and ((frame + i) % 2 == 0)
+        for i in range(n):                            # gentle wave: one crab sways up at a time
+            up = playing and (i == (frame // 2) % n)
             _put(win, y0 + (1 if up else 2), start + i * (cw + gap), [("crab", crab(i))], w)
         cap = "♪ sax · trumpet · bass · drums ♪" if playing else "✦ that's a wrap — bravo! ✦"
         _put(win, y0 + 3, max(1, (w - len(cap)) // 2), [("dim", cap)], w)
