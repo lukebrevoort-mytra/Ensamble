@@ -52,7 +52,8 @@ thoroughly" spawns adversarial panels — bounded by your token budget.
 ## Quickstart — apply to any repo
 
 **Prerequisites:** Claude Code with the native Workflow tool · `git` · `gh` (for PR
-review) · `node` (only for the optional script validator).
+review) · `python3` (for the `wfwatch` viewer) · `node` (only for the optional script
+validator).
 
 ### 1. Get Ensemble and expose the installer globally *(once per machine)*
 
@@ -74,6 +75,9 @@ ln -sf ~/.claude/ensemble/tools/wfwatch ~/.claude/bin/wfwatch
 
 > These are **symlinks** into your kit checkout, so `git pull` in `~/.claude/ensemble`
 > updates the installer/updater (and `wfwatch`) themselves with no extra step.
+>
+> **Already set up Ensemble before `wfwatch` existed?** `git pull` updates the tool's
+> code but won't *create* the link — run the two `wfwatch` lines above once.
 
 ### 2. Install into a target repo *(once per repo)*
 

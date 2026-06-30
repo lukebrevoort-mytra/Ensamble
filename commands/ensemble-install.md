@@ -124,5 +124,12 @@ in this repo, and that to pull later kit updates they can run **`/ensemble-updat
 (the light path — re-syncs the portable layer, no interview; `--all` updates every
 install at once) or re-run `/ensemble-install` for a full retrofit — neither touches
 `repo-profile.md`.
+   Also point them at **`wfwatch`** — the live run viewer — as a one-time, machine-global
+   setup (it is NOT per-repo; do not write outside this repo to install it). Check
+   whether `~/.claude/bin/wfwatch` already exists; if not, tell the user to run once
+   (resolving `<KIT>` to the actual kit path):
+   `mkdir -p ~/.claude/bin && ln -sf <KIT>/tools/wfwatch ~/.claude/bin/wfwatch`
+   and ensure `~/.claude/bin` is on their `PATH` (needs `python3`). Then `wfwatch` in a
+   side terminal follows any run live.
 
 Optional argument (target repo path, if not the current directory): $ARGUMENTS
