@@ -405,7 +405,31 @@ def _draw_list(win, run_dir, infos, sel, complete):
     _bar(win, h - 1, w, "↑↓/jk select · ⏎ open · q quit", attr=ATTR["barfoot"])
     win.noutrefresh()
 
-def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll, banner):
+_CRAB_EYES = ["o_o", "^_^", ">_<", "-_-", "O_O", "=_="]   # grooving expressions (ASCII-safe)
+_NOTE_PAT = "   ♪    ♫    ♩    ♬    ♭   ♪   "
+
+def _draw_band(win, y0, w, band_h, frame, playing):
+    """The crab jazz quartet — breathing room at the bottom; notes drift = 'loading'."""
+    off = (frame * 2) % len(_NOTE_PAT) if playing else 0
+    tiled = _NOTE_PAT * (w // len(_NOTE_PAT) + 2)
+    notes = tiled[off:off + max(0, w - 2)] if playing else "        ♩           ♩           ♩"
+    n, cw, gap = 4, 7, 5                               # crab "\(o_o)/" is 7 wide
+    start = max(1, (w - (n * cw + (n - 1) * gap)) // 2)
+    def crab(i):
+        eyes = "^_^" if not playing else _CRAB_EYES[(frame + i) % len(_CRAB_EYES)]
+        return "\\(" + eyes + ")/"
+    _put(win, y0, 0, [("note" if playing else "dim", " " + notes)], w)
+    if band_h >= 4:
+        for i in range(n):                            # bob between two rows = groove
+            up = playing and ((frame + i) % 2 == 0)
+            _put(win, y0 + (1 if up else 2), start + i * (cw + gap), [("crab", crab(i))], w)
+        cap = "♪ ~ the crab jazz quartet ~ ♪" if playing else "✦ that's a wrap — bravo! ✦"
+        _put(win, y0 + 3, max(1, (w - len(cap)) // 2), [("dim", cap)], w)
+    else:                                             # compact: one crab row
+        for i in range(n):
+            _put(win, y0 + 1, start + i * (cw + gap), [("crab", crab(i))], w)
+
+def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll, banner, frame):
     """Draw the focused agent. Returns the clamped scroll offset (0 = live tail)."""
     win.erase(); h, w = win.getmaxyx()
     a = next((x for x in infos if x["id"] == aid), None)
@@ -422,13 +446,17 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
     if banner:
         _bar(win, 1, w, banner, attr=ATTR["banner"])
         top = 2
-    body_h = max(1, (h - 1) - top)
+    band_h = 4 if h >= 19 else (2 if h >= 13 else 0)   # crab quartet + breathing room
+    reserve = (band_h + 1) if band_h else 0            # +1 blank spacer above the band
+    body_h = max(1, (h - 1) - top - reserve)
     max_scroll = max(0, len(lines) - body_h)
     scroll = max(0, min(scroll, max_scroll))
     lo = len(lines) - body_h - scroll
     view = lines[max(0, lo): len(lines) - scroll] if scroll or len(lines) > body_h else lines
     for i, segs in enumerate(view):
         _put(win, top + i, 0, segs, w)
+    if band_h:
+        _draw_band(win, h - 1 - band_h, w, band_h, frame, playing=not complete)
 
     # header bar
     sdot = "● running" if running else "✔ done"
@@ -447,7 +475,7 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
     return scroll
 
 def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
-    curses.curs_set(0); stdscr.timeout(500)
+    curses.curs_set(0); stdscr.timeout(350)  # also the animation tick for the crab band
     curses.start_color(); curses.use_default_colors()
     for i, (nm, fg) in enumerate([("cy", curses.COLOR_CYAN), ("gr", curses.COLOR_GREEN),
                                   ("ye", curses.COLOR_YELLOW), ("mg", curses.COLOR_MAGENTA),
@@ -461,12 +489,18 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
     if curses.COLORS >= 256:
         curses.init_pair(20, 235, 108)   # dark text on soft green  (#87af87)
         curses.init_pair(21, 230, 173)   # cream on terracotta      (#d7875f)
+        curses.init_pair(22, 209, -1)    # crab orange              (#ff875f)
+        curses.init_pair(23, 179, -1)    # music notes, warm gold   (#d7af5f)
         ATTR["bar"] = curses.color_pair(20) | curses.A_BOLD
         ATTR["barfoot"] = curses.color_pair(20)
         ATTR["banner"] = curses.color_pair(21) | curses.A_BOLD
+        ATTR["crab"] = curses.color_pair(22) | curses.A_BOLD
+        ATTR["note"] = curses.color_pair(23)
     else:
         ATTR["bar"] = ATTR["barfoot"] = curses.A_REVERSE
         ATTR["banner"] = curses.A_REVERSE | curses.A_BOLD
+        ATTR["crab"] = ATTR["rd"] | curses.A_BOLD
+        ATTR["note"] = ATTR["ye"]
 
     def newest_mtime(d):
         ag = glob.glob(os.path.join(d, "agent-*.jsonl"))
@@ -479,11 +513,12 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
         focus, scroll, flash, flash_until = fid, 0, f"▶ now following #{idx_of(fid)} · {label_of(fid)}{why}", time.time() + 2.6
 
     infos = roster(run_dir)
-    mode = "list"; sel = 0; focus = None; scroll = 0; flash = ""; flash_until = 0.0
+    mode = "list"; sel = 0; focus = None; scroll = 0; flash = ""; flash_until = 0.0; frame = 0
     if preselect and any(i["id"] == preselect for i in infos):
         mode, focus = "focus", preselect
 
     while True:
+        frame += 1
         infos = roster(run_dir)
         complete = bool(infos) and all(i["status"] == "done" for i in infos)
         if not any(i["status"] == "running" for i in infos):  # adopt a newer run when idle
@@ -503,7 +538,7 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
                     goto(run[-1]["id"], f"  (auto-advanced — #{idx_of(focus)} {label_of(focus)} finished)")
             banner = flash if time.time() < flash_until else ""
             scroll = _draw_focus(stdscr, run_dir, focus, infos, reasoning_only, raw,
-                                 complete, scroll, banner)
+                                 complete, scroll, banner, frame)
         else:
             sel = max(0, min(sel, len(infos) - 1)) if infos else 0
             _draw_list(stdscr, run_dir, infos, sel, complete)
