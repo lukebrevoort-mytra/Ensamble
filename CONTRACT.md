@@ -109,10 +109,11 @@ parallel fan-out, *independent/adversarial* verification, or determinism across 
 units. A phase that is inherently **sequential and needs human steering belongs in
 the launcher** (conversational, in the main agent), not in the detached script — a
 script can't pause to ask, so burying a steerable phase in it either thrashes or locks
-the user out. Concretely: implementation is sequential and the launcher locks its
-contract with the human; the *verification* of that contract is independent and
-fans out — so it lives in the script. Apply this test before adding any phase or a
-new workflow: if its core is sequential-and-human-steered, don't put it in a script.
+the user out. Concretely: locking the passing criteria is human-steered, so the
+launcher does it with the human; the implement↔verify loop is autonomous and fans
+out (independent verification, and independent tasks implemented in parallel) — so it
+lives in the script. Apply this test before adding any phase or a new workflow: if its
+core is sequential-and-human-steered, don't put it in a script.
 
 ### 4.2 Sandbox truths — inject static context, delegate live work
 

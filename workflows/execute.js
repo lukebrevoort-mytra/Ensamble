@@ -3,8 +3,8 @@ export const meta = {
   description: 'Loop-engineering executor: run an autonomous implement↔verify loop against a LOCKED set of passing criteria, looping (independent verify) until every criterion is proven with evidence or the loop hands back to you — exits complete / needs-you / blocked',
   phases: [
     { title: 'Plan', detail: 'decompose the work into tasks, each mapped to a locked acceptance criterion (criteria are the immutable contract — not invented here)' },
-    { title: 'Implement', detail: 'implement each open task (TDD when possible); sequential to avoid write conflicts' },
-    { title: 'Verify', detail: 'an INDEPENDENT verifier re-proves each criterion with evidence; misses loop back to Implement while progress is being made' },
+    { title: 'Implement', detail: 'implement open tasks in parallel waves of independent, file-disjoint tasks (TDD when possible); file-sharing or dependent tasks serialize' },
+    { title: 'Verify', detail: 'an INDEPENDENT verifier re-proves each criterion with evidence AND judges minimality; misses (incl. high bloat) loop back to Implement while progress is being made' },
     { title: 'Checks', detail: 'final canonical checks + invariant gate tests + mandatory-evidence gate' },
   ],
 }
@@ -161,6 +161,14 @@ const TASK_VERDICT_SCHEMA = {
     needsHuman: { type: 'boolean' },        // criterion is ambiguous/underspecified — no implementation can settle it
     humanQuestion: { type: 'string' },      // the exact decision the human must make
     missing: { type: 'string' }, feedback: { type: 'string' },
+    // Minimality judgment (the anti-bloat gate): is this the SMALLEST change that meets the
+    // criterion? Part of "done" — a correct-but-over-built change is not finished.
+    minimal: { type: 'boolean', description: 'true only if nothing material can be cut without breaking the criterion' },
+    bloat: { type: 'array', items: { type: 'object', required: ['issue', 'severity'], properties: {
+      file: { type: 'string' }, line: { type: ['integer', 'null'] },
+      issue: { type: 'string', description: 'the excess: speculative abstraction, dead code, what-comment, duplication, scope creep' },
+      severity: { type: 'string', enum: ['high', 'med', 'low'] },
+      fix: { type: 'string', description: 'the specific cut to make' } } } },
   },
 }
 const CHECKS_SCHEMA = {
@@ -287,13 +295,40 @@ const effortDist = plan.tasks.reduce((m, t) => { const e = t.effort && EFFORT_LA
 if (Object.keys(effortDist).some(k => k !== '(phase default)'))
   log(`Per-task effort (nudges Implement ±${TASK_EFFORT_CLAMP} rung around ${implTier.effort}): ${Object.entries(effortDist).map(([e, n]) => `${n}×${e}`).join(', ')}`)
 
-// ── Phases 2–3: the implement→verify loop. Implement runs SEQUENTIALLY (agents
-// mutate the same working tree; parallel writes would clobber each other), then
-// verify runs in PARALLEL and INDEPENDENTLY (the verifier re-proves the criterion
-// rather than trusting the implementer — this is what makes the autonomous loop
-// trustworthy, CONTRACT §4.8). The loop continues while there is open work AND the
-// last round made PROGRESS — it stops the moment it stalls instead of grinding to
-// the cap (CONTRACT §4.8: progress-based termination, not a fixed round count).
+// Group dependency-ordered tasks into WAVES that implement in parallel safely. A task joins
+// an existing wave only when (a) none of its deps are in that wave (deps must land in an
+// EARLIER wave so their output exists first) and (b) its files are disjoint from every task
+// already in the wave. A task with no declared files can't be proven conflict-free, so it
+// runs solo. Net: independent tasks fan out; dependent or file-sharing ones serialize.
+function planWaves(tasks) {
+  const filesOf = t => new Set((t.files || []).map(f => f.trim()).filter(Boolean))
+  const waveOf = new Map()                          // taskId -> index of the wave it landed in
+  const waves = []
+  for (const t of tasks) {
+    const own = filesOf(t)
+    let minWave = 0                                  // earliest wave allowed by in-batch deps
+    for (const d of (t.dependsOn || [])) if (waveOf.has(d)) minWave = Math.max(minWave, waveOf.get(d) + 1)
+    let target = -1
+    if (own.size) for (let wi = minWave; wi < waves.length; wi++) {
+      const w = waves[wi]
+      if (w.solo) continue
+      if (w.tasks.every(o => { const os = filesOf(o); return ![...own].some(f => os.has(f)) })) { target = wi; break }
+    }
+    if (target === -1) { waves.push({ tasks: [t], solo: own.size === 0 }); target = waves.length - 1 }
+    else waves[target].tasks.push(t)
+    waveOf.set(t.id, target)
+  }
+  return waves.map(w => w.tasks)
+}
+
+// ── Phases 2–3: the implement→verify loop. Implement runs in PARALLEL WAVES of
+// independent, file-disjoint tasks (file-sharing or dependent tasks serialize into
+// later waves — see planWaves); this is conflict-free for the same reason Verify
+// already fans out in one tree. Verify then runs in PARALLEL and INDEPENDENTLY (the
+// verifier re-proves the criterion rather than trusting the implementer — what makes
+// the autonomous loop trustworthy, CONTRACT §4.8). The loop continues while there is
+// open work AND the last round made PROGRESS — it stops the moment it stalls instead of
+// grinding to the cap (CONTRACT §4.8: progress-based termination, not a fixed round count).
 while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   round++
   const openBefore = remaining.length
@@ -302,7 +337,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   log(`Round ${round}: implementing ${remaining.length} open task(s)`)
 
   phase('Implement')
-  for (const t of remaining) {
+  const implementTask = async (t) => {
     ledger[t.id].rounds = round
     const impl = await agent(
       brief({
@@ -315,7 +350,8 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
             ? `Use TDD: write a failing test encoding the criterion → implement the minimum to pass → confirm green → refactor.`
             : `No clean test path — add a characterization test or a runtime smoke check and note it BLOCKED ⛔ on TDD.`,
           mandatory.length ? `If any mandatory requirement applies to your files, PRODUCE its evidence now (run the cycle, capture the screenshot via the browser MCP, etc.): ${mandatoryLine()}.` : ``,
-          feedback[t.id] ? `\n## A previous attempt was sent back — address this and produce the missing evidence:\n${feedback[t.id]}` : ``,
+          feedback[t.id] ? `\n## A previous attempt was sent back — address exactly this, and add nothing beyond it:\n${feedback[t.id]}` : ``,
+          `Stay strictly inside this task's files (${(t.files || []).join(', ') || 'the files this task owns'}) — other tasks may be implementing alongside you; do not touch files outside your scope.`,
           `If this task genuinely cannot be completed, set blocked=true and: blockerKind='external' for an infra/creds/env/no-test-path wall (say exactly what is missing), or blockerKind='decision' if it needs a human choice the spec does not settle (state the exact question). Do NOT fake completion.`,
           `After editing, run the scoped checks and capture real output as evidence.`,
         ].filter(Boolean).join('\n'),
@@ -335,6 +371,14 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
       }
     }
   }
+  // Fan out independent tasks; serialize the rest (planWaves guarantees no two tasks in a
+  // wave share a file, so concurrent writes can't clobber).
+  const waves = planWaves(remaining)
+  if (waves.some(w => w.length > 1)) log(`Round ${round}: ${remaining.length} task(s) across ${waves.length} wave(s) — parallelizing independent, file-disjoint tasks`)
+  for (const wave of waves) {
+    if (wave.length === 1) await implementTask(wave[0])
+    else await parallel(wave.map(t => () => implementTask(t)))
+  }
 
   // Verify only the tasks still pending (not self-reported blocked/decision this round).
   const toVerify = remaining.filter(t => ledger[t.id].status === 'pending')
@@ -348,6 +392,7 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
           `Independently verify this acceptance criterion is actually met WITH evidence — do not trust the implementer's claim: ${critText(t)}`,
           `Re-run the relevant scoped test/command yourself and read the changed code.`,
           mandatory.length ? `Also confirm any mandatory requirement that applies to these files was satisfied with real evidence (e.g. a screenshot of the working UI exists, the eval/sim cycle ran): ${mandatoryLine()}. If that evidence is missing, the task is NOT satisfied — state exactly what to produce.` : ``,
+          `Also judge MINIMALITY: read the actual diff and decide whether this is the SMALLEST change that meets the criterion. Flag as \`bloat\` (each with file:line, severity, and the specific \`fix\`/cut): code beyond what the criterion requires, speculative generality or unused abstraction, dead code, redundant what-it-does comments, duplicated logic that should reuse what already exists, or scope creep into other criteria. Set \`minimal\`=true only if nothing material can be cut. A correct but over-built change is NOT done — minimality is part of the bar.`,
           `satisfied=true only if the criterion is met; evidenceProduced=true only if all applicable mandatory evidence exists. If the criterion itself is ambiguous/underspecified such that no implementation can settle it without a human decision, set needsHuman=true with a precise humanQuestion. Otherwise give precise, actionable feedback for the next attempt.`,
         ].filter(Boolean).join('\n'),
         evidence: 'Cite the command output or file:line you checked.',
@@ -361,13 +406,27 @@ while (remaining.length && round < MAX_ROUNDS && budgetOk() && !stuck) {
   toVerify.forEach((t, i) => {
     const v = verdicts[i]
     ledger[t.id].verdict = v
-    if (v && v.satisfied && v.evidenceProduced) {
+    const correct = v && v.satisfied && v.evidenceProduced
+    const allBloat = (v && v.bloat) || []
+    const highBloat = allBloat.filter(b => b && b.severity === 'high')
+    // Minimality is part of "done" — but each task earns at most ONE prune-triggered round,
+    // then high bloat drops to advisory. This bounds "make it simpler" so it cannot thrash:
+    // a single extra round at most per task, never an open-ended bikeshed.
+    const blockOnBloat = correct && highBloat.length > 0 && !ledger[t.id].pruned
+    if (correct && !blockOnBloat) {
       ledger[t.id].status = 'done'
+      if (highBloat.length) ledger[t.id].residualBloat = highBloat   // pruned once already; flagged as advisory in the report
     } else if (v && v.needsHuman) {
       ledger[t.id].status = 'needs-decision'
       decisions.push({ taskId: t.id, question: v.humanQuestion || 'criterion is underspecified — needs a human decision', source: 'verifier' })
     } else {
-      feedback[t.id] = (v && (v.missing || v.feedback)) || 'verification failed; re-check the criterion and produce the required evidence'
+      if (blockOnBloat) ledger[t.id].pruned = true   // this re-round IS the single prune pass
+      const bloatNote = allBloat.length
+        ? `\nTRIM this excess (add nothing — only cut): ${allBloat.map(b => `${b.file || '?'}${b.line ? ':' + b.line : ''} — ${b.issue}${b.fix ? ` → ${b.fix}` : ''}`).join('; ')}`
+        : ''
+      feedback[t.id] = (correct
+        ? `Criterion is met — now reduce it to the minimal change, removing the excess below.`
+        : ((v && (v.missing || v.feedback)) || 'verification failed; re-check the criterion and produce the required evidence')) + bloatNote
       next.push(t)
     }
   })
@@ -428,6 +487,8 @@ const tasksOut = plan.tasks.map(t => {
     id: t.id, description: t.description, criterionIds: t.criterionIds || [], status: e.status, rounds: e.rounds,
     evidence: (e.impl && e.impl.evidence) || '', testAdded: (e.impl && e.impl.testAdded) || '',
     blocker: e.blocker || '', lastFeedback: feedback[t.id] || '',
+    pruned: !!e.pruned,                          // sent back once to trim bloat
+    residualBloat: e.residualBloat || [],        // high bloat that survived the prune pass — advisory
   }
 })
 // A criterion is met only when every task mapped to it is done. Unmapped criteria
@@ -484,6 +545,9 @@ const stopReason =
   : (failedChecks.length || failedGates.length || unmetReqs.length) ? 'all tasks attempted but a check / invariant gate / mandatory requirement is not satisfied'
   : 'returning to you with the unmet criteria + last feedback'
 
+const prunedCount = tasksOut.filter(t => t.pruned).length
+const residualCount = tasksOut.filter(t => t.residualBloat.length).length
+if (prunedCount || residualCount) log(`Simplicity gate: ${prunedCount} task(s) sent back to trim bloat; ${residualCount} accepted with residual bloat (advisory)`)
 log(`Exit: ${exitState} — ${done.length}/${plan.tasks.length} tasks done, ${criteriaOut.filter(c => c.satisfied).length}/${criteriaOut.length} criteria met, ${needsDecision.length} need-decision, ${blockedExternal.length} blocked; ${unmetReqs.length} unmet requirement(s)`)
 
 return {
@@ -508,6 +572,8 @@ return {
     unmappedCriteria: criteriaOut.filter(c => c.unmapped).map(c => c.id),
     mandatoryUnmet: unmetReqs.map(r => r.requirement),
     mandatoryBlocked: blockedReqs.map(r => r.requirement),
+    bloatPruned: tasksOut.filter(t => t.pruned).map(t => t.id),            // tasks trimmed by the simplicity gate
+    bloatResidual: tasksOut.filter(t => t.residualBloat.length).map(t => t.id),  // accepted with residual bloat (advisory)
     droppedToBudget: !budgetOk(),
   },
 }

@@ -108,7 +108,9 @@ different handoff. Render two things:
    / unmet — so the user sees their locked contract scored line by line), and the *Evidence
    / checks run* table from `checks`. State plainly which criteria are met (FACT ✓) and
    which are not. If `criteriaWereConfirmed` is false, say the criteria were derived, not
-   human-locked.
+   human-locked. Note any **simplicity-gate** activity: tasks the verifier sent back to trim
+   (`coverage.bloatPruned`) and any accepted with residual bloat (`coverage.bloatResidual`) —
+   surface the latter as an advisory the user can act on.
 2. **A visual artifact** — render the return object into a self-contained HTML page via the
    **Artifact tool** (load the `artifact-design` skill / house style: Fraunces + Spline
    Sans, warm neutrals, one terracotta accent, render-on-first-paint, no external assets).
