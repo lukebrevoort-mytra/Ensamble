@@ -64,10 +64,16 @@ git clone https://github.com/lukebrevoort-mytra/Ensamble ~/.claude/ensemble
 mkdir -p ~/.claude/commands   # ln won't create this dir; fresh machines may not have it
 ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
 ln -sf ~/.claude/ensemble/commands/ensemble-update.md  ~/.claude/commands/ensemble-update.md
+
+# expose `wfwatch` — the live workflow-observability CLI (needs ~/.claude/bin on PATH)
+mkdir -p ~/.claude/bin
+ln -sf ~/.claude/ensemble/tools/wfwatch ~/.claude/bin/wfwatch
+# add to your shell profile (~/.bashrc or ~/.zshrc) if ~/.claude/bin isn't on PATH:
+#   export PATH="$HOME/.claude/bin:$PATH"
 ```
 
 > These are **symlinks** into your kit checkout, so `git pull` in `~/.claude/ensemble`
-> updates the installer/updater themselves with no extra step.
+> updates the installer/updater (and `wfwatch`) themselves with no extra step.
 
 ### 2. Install into a target repo *(once per repo)*
 
@@ -96,6 +102,36 @@ requirements**), and writes `.claude/ensemble/repo-profile.md`.
 /debug    "uploads >10MB 500 intermittently"  # → reproduces it, root-causes it, → .workflows/debug-*.md
 /debug    4567                                 # → diagnoses the bug in issue #4567
 ```
+
+### Watch it run live — `wfwatch`
+
+Workflows fan out subagents in the background; the native `/workflows` panel shows a
+digest (last few tool calls, "Still running…"). `wfwatch` reads the full per-agent
+transcripts the runtime writes, so in a side terminal you can see each agent's
+**reasoning** and **every tool call** as it happens.
+
+Run `wfwatch` for a **full-screen interactive picker**: choose an agent with `↑↓`,
+`⏎` to follow it; when that agent finishes it **auto-advances to the next unfinished
+one**, and shows `✓ run complete` when the whole run ends. Launch it *before* you
+start a run and it adopts the new run automatically.
+
+```sh
+wfwatch              # interactive TUI — list: ↑↓ pick · ⏎ open;  agent: ↑↓ scroll · ⇥ next · b back · q quit
+wfwatch verifier     # open focused on the agent matching a type/id/prompt-text (e.g. T4)
+wfwatch -l           # just print the roster (status · tools · tokens), then exit
+wfwatch --stream     # non-interactive: stream the whole run as text (good for piping)
+wfwatch -R           # reasoning only (drop tool calls/results)
+wfwatch --runs       # list recent workflow runs
+```
+
+Agents are shown by their **workflow label** (`impl:T1`, `verify:C3`, `shape-map`),
+with the agent type in parens. For a **completed** run these are read from the run's
+state file and match the native panel exactly; for an **in-progress** agent (whose
+label the runtime keeps in memory and only writes to disk at completion) the label is
+**derived from the agent's prompt** so concurrent agents are still distinguishable.
+
+It's read-only — a parallel viewer over `~/.claude/projects/.../subagents/workflows/`,
+not a hook into the native panel. Piping or `--stream` falls back to a plain-text streamer.
 
 ### Keep installs current
 
@@ -173,3 +209,5 @@ portable layer, identical across every repo.
 - **`PLAN.md`** — the living design doc and rationale.
 - **`tools/validate-workflows.mjs`** — CI guard: `node tools/validate-workflows.mjs`
   checks every workflow script parses and respects the sandbox rules.
+- **`tools/wfwatch`** — live workflow-observability CLI (see *Watch it run live* above);
+  symlink it onto your PATH once per machine.
