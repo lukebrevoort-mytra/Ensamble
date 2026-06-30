@@ -1,0 +1,605 @@
+#!/usr/bin/env python3
+"""wfwatch — watch Ensemble (Claude Code) workflow subagents execute live.
+
+The /workflows TUI shows a digest (last 3 tool calls, "Still running…").
+wfwatch reads the full agent-*.jsonl transcripts the runtime writes as agents
+run, so you see each agent's reasoning and every tool call as it happens.
+
+Usage
+  wfwatch                 interactive TUI — pick an agent with ↑↓, ⏎ to follow it;
+                          auto-advances to the next unfinished agent as each completes.
+                          Adopts a run that starts after you launch it.
+  wfwatch <query>         open focused on the agent matching <query> (type/id/prompt — e.g. T4, verifier)
+  wfwatch -n <k>          open focused on the k-th agent in the roster (1-based)
+  wfwatch -r <wf_id>      target a specific run instead of the newest
+  wfwatch -l, --list      print the roster and exit (no TUI)
+  wfwatch --runs          list recent workflow runs and exit
+  wfwatch --stream        non-interactive: stream the whole run as plain text (good for piping)
+  wfwatch --reasoning, -R only reasoning (drop tool calls/results)
+  wfwatch --raw           don't truncate tool args / results
+  wfwatch -h, --help      this help
+
+TUI keys:
+  List   ↑↓ select · ⏎ open
+  Agent  ↑↓ scroll · PgUp/PgDn page · End live tail · ⇥/⇧⇥ (or n/p) next/prev agent · b list
+  q quit  (auto-advances to the next unfinished agent when one completes)
+(Non-tty or --stream falls back to the plain-text streamer; Ctrl-C stops it.)
+"""
+import sys, os, json, glob, time, argparse, shutil, textwrap, curses, re
+
+ROOT = os.path.expanduser("~/.claude/projects")
+TTY = sys.stdout.isatty()
+def _w(): return max(60, shutil.get_terminal_size((100, 24)).columns)
+
+# ── palette ────────────────────────────────────────────────────────────────
+_C = {"dim":"\033[2m","b":"\033[1m","cy":"\033[36m","gr":"\033[32m","ye":"\033[33m",
+      "rd":"\033[31m","mg":"\033[35m","bl":"\033[34m","rs":"\033[0m"}
+def c(s, k): return f"{_C[k]}{s}{_C['rs']}" if TTY else str(s)
+
+def box(title, lines):
+    w = min(_w() - 2, max([len(title)] + [len(l) for l in lines]) + 2, 96)
+    print(c("╭─ " + title + " " + "─" * max(0, w - len(title) - 3) + "╮", "b"))
+    for l in lines:
+        print(c("│ ", "b") + l.ljust(w - 2) + c(" │", "b"))
+    print(c("╰" + "─" * w + "╯", "b"))
+
+# ── data ─────────────────────────────────────────────────────────────────────
+def find_runs():
+    runs = []
+    for p in (os.path.join(ROOT, "*", "*", "subagents", "workflows", "wf_*"),
+              os.path.join(ROOT, "*", "subagents", "workflows", "wf_*")):
+        for d in glob.glob(p):
+            ag = glob.glob(os.path.join(d, "agent-*.jsonl"))
+            if ag:
+                runs.append((max(os.path.getmtime(f) for f in ag), d, len(ag)))
+    return sorted(runs, reverse=True)
+
+def jload(path):
+    out = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try: out.append(json.loads(line))
+                    except: pass
+    except FileNotFoundError: pass
+    return out
+
+def status_map(run_dir):
+    st = {}
+    for r in jload(os.path.join(run_dir, "journal.jsonl")):
+        aid = r.get("agentId")
+        if not aid: continue
+        if r.get("type") == "result": st[aid] = "done"
+        elif r.get("type") == "started" and aid not in st: st[aid] = "running"
+    return st
+
+def _meta_type(path):
+    try: return json.load(open(path.replace(".jsonl", ".meta.json"))).get("agentType", "?")
+    except (OSError, ValueError): return "?"
+
+_JOB_RE = re.compile(r"## Your single job\s*(.+?)(?:\n##|\Z)", re.S)
+def _first_prompt(rows):
+    for r in rows:
+        if r.get("type") == "user":
+            ct = r.get("message", {}).get("content", "")
+            if isinstance(ct, list):
+                ct = " ".join(b.get("text", "") for b in ct if isinstance(b, dict))
+            if (ct or "").strip(): return ct
+    return ""
+
+def derive_label(prompt):
+    """No state-file label yet (live run) — derive a recognizable tag from the
+    Ensemble prompt's '## Your single job' so concurrent agents are distinguishable."""
+    m = _JOB_RE.search(prompt)
+    job = " ".join((m.group(1) if m else prompt).split())
+    low = job.lower()
+    bid = (re.search(r"\[([A-Za-z]+\d+)\]", job) or [None, None])[1]  # [C3], [T1]
+    if "independently verify this acceptance criterion" in low or low.startswith("verify"):
+        return f"verify:{bid}" if bid else "verify"
+    if low.startswith("implement this task"):
+        name = re.sub(r"^implement this task:\s*", "", job, flags=re.I)
+        return "impl:" + (bid or " ".join(name.split())[:22])
+    if "passing criteria are locked" in low or "decompose the work" in low:
+        return "plan"
+    if "map the change" in low or "change map" in low:
+        return "shape-map"
+    mr = re.search(r"you are (?:the )?(.+?) (?:reviewer|specialist|critic)", low)
+    if mr: return "review:" + " ".join(mr.group(1).split())[:24]
+    return job[:26].strip() or "agent"
+
+def progress_map(run_dir):
+    """agentId → workflow_agent entry from the session state file — the SAME source
+    the native /workflows panel uses, so labels match exactly (impl:T1, verify:…)."""
+    session = os.path.dirname(os.path.dirname(os.path.dirname(run_dir)))
+    sf = os.path.join(session, "workflows", os.path.basename(run_dir) + ".json")
+    out = {}
+    try:
+        for e in json.load(open(sf)).get("workflowProgress", []):
+            if e.get("type") == "workflow_agent" and e.get("agentId"):
+                out[e["agentId"]] = e
+    except (OSError, ValueError): pass
+    return out
+
+_STATE = {"running": "running", "done": "done", "queued": "queued", "failed": "failed"}
+
+def agent_info(path, smap, pmap):
+    aid = os.path.basename(path)[len("agent-"):-len(".jsonl")]
+    atype = _meta_type(path)
+    p = pmap.get(aid)
+    if p:  # state file present — mirror the native panel
+        label = p.get("label") or atype
+        status = _STATE.get(p.get("state"), smap.get(aid, "running"))
+        toks, tools, idx = p.get("tokens", 0), p.get("toolCalls", 0), p.get("index", 9999)
+        desc = (p.get("promptPreview", "") or "").splitlines()[0] if p.get("promptPreview") else ""
+    else:  # fallback (live run, no state file yet) — derive from the transcript
+        rows = jload(path); toks = tools = 0; idx = 9999
+        for r in rows:
+            if r.get("type") == "assistant":
+                msg = r.get("message", {})
+                tools += sum(1 for b in msg.get("content", []) if b.get("type") == "tool_use")
+                toks += (msg.get("usage", {}).get("output_tokens", 0) or 0)
+        prompt = _first_prompt(rows)
+        label = derive_label(prompt) if prompt else atype
+        desc = (_JOB_RE.search(prompt).group(1).strip().split("\n")[0][:90]
+                if prompt and _JOB_RE.search(prompt) else "")
+        status = smap.get(aid, "running" if rows else "?")
+    return dict(id=aid, label=label, type=atype, status=status, tools=tools, toks=toks,
+                idx=idx, mtime=os.path.getmtime(path), path=path, desc=desc,
+                search=f"{aid} {label} {atype} {desc}".lower())
+
+def roster(run_dir):
+    sm = status_map(run_dir); pm = progress_map(run_dir)
+    infos = [agent_info(p, sm, pm) for p in glob.glob(os.path.join(run_dir, "agent-*.jsonl"))]
+    infos.sort(key=lambda i: (i["idx"], i["mtime"]))
+    return infos
+
+# ── formatting ────────────────────────────────────────────────────────────────
+def ago(mtime):
+    s = int(time.time() - mtime)
+    if s < 10: return "just now"
+    if s < 90: return f"{s}s ago"
+    if s < 5400: return f"{s // 60}m ago"
+    return f"{s // 3600}h ago"
+
+def fmt_tok(n): return f"{n/1000:.1f}k" if n >= 1000 else str(n)
+def glyph(s): return {"running": c("● running", "ye"),
+                      "done": c("✔ done", "gr")}.get(s, c("· " + s, "dim"))
+
+def print_roster(run_dir, infos):
+    n_run = sum(1 for i in infos if i["status"] == "running")
+    n_done = sum(1 for i in infos if i["status"] == "done")
+    started = min(i["mtime"] for i in infos) if infos else time.time()
+    box(os.path.basename(run_dir),
+        [f"{len(infos)} agents · {n_done} done · {n_run} running · started {ago(started)}"])
+    print()
+    for i, a in enumerate(infos, 1):
+        meta = f"{a['tools']}t · {fmt_tok(a['toks'])} tok · {ago(a['mtime'])}"
+        print(f"  {c(f'{i:>2}', 'b')}  {glyph(a['status']):<20} "
+              f"{c(textwrap.shorten(a['label'], 38), 'cy')}  {c('(' + a['type'] + ')', 'dim')}")
+        print(f"      {c(meta, 'dim')}")
+
+HOME = os.path.expanduser("~")
+def clip(s, prefix_len, raw=False):
+    s = s.replace(HOME, "~")
+    if raw: return s
+    avail = max(20, _w() - prefix_len - 1)
+    return s if len(s) <= avail else s[:avail - 1] + "…"
+
+def tool_summary(name, inp):
+    """One salient field instead of raw JSON (path / command / pattern / …)."""
+    if not isinstance(inp, dict): return str(inp)
+    for k in ("command", "file_path", "path", "pattern", "query", "url",
+              "description", "prompt"):
+        v = inp.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.replace("\n", " ")
+    return json.dumps(inp)
+
+def render(r, reasoning_only=False, raw=False):
+    if r.get("type") == "assistant":
+        for b in r.get("message", {}).get("content", []):
+            t = b.get("type")
+            if t == "text" and b.get("text", "").strip():
+                print()
+                for line in textwrap.wrap(" ".join(b["text"].split()), _w() - 3) or [""]:
+                    print(c("▎ ", "mg") + line)
+            elif t == "tool_use" and not reasoning_only:
+                name = b.get("name", "?")
+                pre = "→ " + name + "  "
+                print(c("→ " + name, "cy") + "  "
+                      + c(clip(tool_summary(name, b.get("input", {})), len(pre), raw), "dim"))
+    elif r.get("type") == "user" and not reasoning_only:
+        ct = r.get("message", {}).get("content", "")
+        if isinstance(ct, list):
+            for b in ct:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    out = b.get("content", "")
+                    if isinstance(out, list):
+                        out = " ".join(x.get("text", "") for x in out if isinstance(x, dict))
+                    out = " ".join((out or "").split())
+                    if out: print(c("  ↳ ", "dim") + c(clip(out, 4, raw), "dim"))
+
+def follow(a, reasoning_only=False, raw=False, tail=10):
+    rows = jload(a["path"])
+    box(f"following · {a['label']} · {a['status']}",
+        [f"{a['type']} · {a['id'][:12]}… · {len(rows)} events · {a['tools']} tools · "
+         f"{fmt_tok(a['toks'])} tok" + ("" if a["status"] == "running"
+                                         else c("   (finished — replaying)", "dim"))])
+    print()
+    for r in rows[-tail:]:
+        render(r, reasoning_only, raw)
+    if a["status"] != "running":
+        print(c("\n── agent already finished; nothing more to stream ──", "b"))
+        return
+    print(c("\n── live · Ctrl-C to stop ──\n", "dim"))
+    with open(a["path"]) as f:
+        f.seek(0, 2); pos = f.tell()
+    try:
+        idle = 0
+        while True:
+            time.sleep(0.7)
+            if os.path.getsize(a["path"]) > pos:
+                with open(a["path"]) as f:
+                    f.seek(pos); chunk = f.read(); pos = f.tell()
+                for line in chunk.splitlines():
+                    line = line.strip()
+                    if line:
+                        try: render(json.loads(line), reasoning_only, raw)
+                        except: pass
+                idle = 0
+            else:
+                idle += 1
+                if idle == 30:  # ~21s quiet → likely done
+                    print(c("\n── quiet for 20s; agent may have finished (Ctrl-C to exit) ──", "dim"))
+    except KeyboardInterrupt:
+        print(c("\n── stopped ──", "b"))
+
+def _read_new(path, off):
+    """Return (complete-lines, new-offset) — only whole newline-terminated lines."""
+    with open(path, "rb") as f:
+        f.seek(off); data = f.read()
+    if b"\n" not in data: return [], off
+    keep = data.rfind(b"\n") + 1
+    text = data[:keep].decode("utf-8", "replace")
+    return [l for l in text.split("\n") if l.strip()], off + keep
+
+def follow_run(run_dir, reasoning_only=False, raw=False):
+    """Follow the whole run: stream every agent, tag who's talking, pick up new
+    agents as they spawn, switch as they complete. Ride the wave, don't get stranded."""
+    infos = roster(run_dir)
+    meta_of = {a["id"]: (i, a["label"]) for i, a in enumerate(infos, 1)}
+    offs = {a["path"]: os.path.getsize(a["path"]) for a in infos}  # start live (at EOF)
+    print(c("\n── following run · all agents · Ctrl-C to stop ──", "dim"))
+    current = None
+
+    def header(aid):
+        n, lbl = meta_of.get(aid, ("?", "?"))
+        label = f"#{n} · {lbl}"
+        print("\n" + c("──── ", "dim") + c(label, "cy")
+              + c(" " + "─" * max(2, 46 - len(label)), "dim"))
+
+    # prime with the last event of each currently-running agent, for immediate context
+    for a in sorted([i for i in infos if i["status"] == "running"], key=lambda i: i["mtime"]):
+        header(a["id"]); current = a["id"]
+        for r in jload(a["path"])[-1:]: render(r, reasoning_only, raw)
+    if current is None:
+        print(c("(no agent running yet — watching for the next one)", "dim"))
+
+    idle = 0
+    try:
+        while True:
+            time.sleep(0.6)
+            batches = []  # (mtime, agentId, lines)
+            for p in sorted(glob.glob(os.path.join(run_dir, "agent-*.jsonl")),
+                            key=os.path.getmtime):
+                aid = os.path.basename(p)[len("agent-"):-len(".jsonl")]
+                if p not in offs:  # a new agent spawned mid-run
+                    n = max([v[0] for v in meta_of.values()] + [0]) + 1
+                    lbl = (progress_map(run_dir).get(aid, {}).get("label")
+                           or _meta_type(p))
+                    meta_of[aid] = (n, lbl); offs[p] = 0
+                    print("\n" + c(f"▶ new agent · #{n} {lbl}", "ye"))
+                if os.path.getsize(p) > offs[p]:
+                    lines, offs[p] = _read_new(p, offs[p])
+                    if lines: batches.append((os.path.getmtime(p), aid, lines))
+            if batches:
+                idle = 0
+                for _, aid, lines in sorted(batches, key=lambda b: b[0]):
+                    if aid != current:
+                        header(aid); current = aid
+                    for line in lines:
+                        try: render(json.loads(line), reasoning_only, raw)
+                        except: pass
+            else:
+                idle += 1
+                if idle == 50:  # ~30s quiet — note it, but keep watching for new waves
+                    if all(s == "done" for s in status_map(run_dir).values()):
+                        print(c("\n── all agents idle; run may be complete "
+                                "(still watching for new agents · Ctrl-C to exit) ──", "dim"))
+    except KeyboardInterrupt:
+        print(c("\n── stopped ──", "b"))
+
+# ── interactive TUI (curses) ───────────────────────────────────────────────────
+ATTR = {}  # color-name → curses attr, filled at init
+
+def clipw(s, prefix_len, width, raw=False):
+    s = s.replace(HOME, "~")
+    if raw: return s
+    avail = max(20, width - prefix_len - 1)
+    return s if len(s) <= avail else s[:avail - 1] + "…"
+
+_PATH_TOOLS = {"Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "MultiEdit"}
+_ERR_HINT = ("error", "traceback", "exception", "exit 1", "exit code 1", "failed",
+             "fatal:", "no such file", "permission denied", "not found", "✗")
+
+def event_segments(r, width, reasoning_only, raw):
+    """One event → list of display lines; each line is [(color_name, text), …].
+    Reasoning gets a 'thinking' gutter; tool calls/results get role colors."""
+    lines = []
+    if r.get("type") == "assistant":
+        for b in r.get("message", {}).get("content", []):
+            t = b.get("type")
+            if t == "text" and b.get("text", "").strip():
+                lines.append([])  # spacer above a thinking block
+                wrapped = textwrap.wrap(" ".join(b["text"].split()), max(12, width - 5))
+                for j, ln in enumerate(wrapped):
+                    lines.append([("mgb", "▎"), ("mg", " ✎ " if j == 0 else "   "), ("th", ln)])
+            elif t == "tool_use" and not reasoning_only:
+                name = b.get("name", "?")
+                summ = tool_summary(name, b.get("input", {}))
+                col = "bl" if name in _PATH_TOOLS else "dim"
+                lines.append([("cyb", "  → " + name), ("", " "),
+                              (col, clipw(summ, len(name) + 5, width, raw))])
+    elif r.get("type") == "user" and not reasoning_only:
+        ct = r.get("message", {}).get("content", "")
+        if isinstance(ct, list):
+            for b in ct:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    out = b.get("content", "")
+                    if isinstance(out, list):
+                        out = " ".join(x.get("text", "") for x in out if isinstance(x, dict))
+                    out = " ".join((out or "").split())
+                    if not out: continue
+                    err = bool(b.get("is_error")) or any(h in out.lower() for h in _ERR_HINT)
+                    mark, col = ("    ✗ ", "rd") if err else ("    ↳ ", "dim")
+                    lines.append([(col, mark), ("rd" if err else "dim",
+                                                clipw(out, 6, width, raw))])
+    return lines
+
+def _put(win, y, x, segs, maxx):
+    for name, text in segs:
+        if x >= maxx - 1: break
+        text = text[:maxx - 1 - x]
+        try: win.addstr(y, x, text, ATTR.get(name, 0))
+        except curses.error: pass
+        x += len(text)
+
+def _bar(win, y, w, left, right="", attr=curses.A_REVERSE):
+    s = " " + left
+    s += " " * max(1, w - 1 - len(s) - len(right) - 1) + right + " "
+    try: win.addstr(y, 0, s[:w - 1], attr)
+    except curses.error: pass
+
+def _draw_list(win, run_dir, infos, sel, complete):
+    win.erase(); h, w = win.getmaxyx()
+    ndone = sum(1 for i in infos if i["status"] == "done")
+    nrun = sum(1 for i in infos if i["status"] == "running")
+    _bar(win, 0, w, f"{os.path.basename(run_dir)}   {len(infos)} agents · {ndone} done · {nrun} running",
+         "✓ complete" if complete else ("● live" if nrun else "idle"), attr=ATTR["bar"])
+    for i, a in enumerate(infos):
+        y = 2 + i
+        if y >= h - 1: break
+        stat = ("ye", "● running") if a["status"] == "running" else ("gr", "✔ done")
+        nm = a["label"][:36]
+        tail = f"  {a['tools']:>3}t {fmt_tok(a['toks']) + ' tok':<9} {ago(a['mtime'])}"
+        if i == sel:
+            s = "● running" if a["status"] == "running" else "✔ done"
+            row = f"▶ {s:<10} {nm:<36} ({a['type']}){tail}"
+            try: win.addstr(y, 0, row[:w - 1], curses.A_REVERSE | curses.A_BOLD)
+            except curses.error: pass
+        else:
+            _put(win, y, 0, [("", "  "), stat, ("cyb", f"  {nm:<36}"),
+                             ("dim", f" ({a['type']}){tail}")], w)
+    _bar(win, h - 1, w, "↑↓/jk select · ⏎ open · q quit", attr=ATTR["barfoot"])
+    win.noutrefresh()
+
+def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll, banner):
+    """Draw the focused agent. Returns the clamped scroll offset (0 = live tail)."""
+    win.erase(); h, w = win.getmaxyx()
+    a = next((x for x in infos if x["id"] == aid), None)
+    if not a:
+        _bar(win, 0, w, "agent gone"); win.noutrefresh(); return 0
+    idx = infos.index(a) + 1
+    running = a["status"] == "running"
+
+    lines = []
+    for r in jload(a["path"]):
+        lines += event_segments(r, w, reasoning_only, raw)
+
+    top = 1
+    if banner:
+        _bar(win, 1, w, banner, attr=ATTR["banner"])
+        top = 2
+    body_h = max(1, (h - 1) - top)
+    max_scroll = max(0, len(lines) - body_h)
+    scroll = max(0, min(scroll, max_scroll))
+    lo = len(lines) - body_h - scroll
+    view = lines[max(0, lo): len(lines) - scroll] if scroll or len(lines) > body_h else lines
+    for i, segs in enumerate(view):
+        _put(win, top + i, 0, segs, w)
+
+    # header bar
+    sdot = "● running" if running else "✔ done"
+    right = "LIVE ●" if (running and scroll == 0) else (f"⇡ {scroll} (End=live)" if scroll else "✔")
+    _bar(win, 0, w, f"#{idx}/{len(infos)}  {a['label']}   {sdot}   "
+                    f"{a['type']} · {a['tools']}t · {fmt_tok(a['toks'])} tok", right, attr=ATTR["bar"])
+    # footer bar
+    if complete:
+        foot = "✓ run complete    ↑↓/jk scroll · ⇥ next agent · b list · q quit"
+    elif a["status"] == "done":
+        foot = "agent done — advancing to next unfinished…    ↑↓/jk scroll · b list · q quit"
+    else:
+        foot = "↑↓/jk scroll · End live · ⇥/⇧⇥ switch agent · b list · q quit"
+    _bar(win, h - 1, w, foot, attr=ATTR["barfoot"])
+    win.noutrefresh()
+    return scroll
+
+def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
+    curses.curs_set(0); stdscr.timeout(500)
+    curses.start_color(); curses.use_default_colors()
+    for i, (nm, fg) in enumerate([("cy", curses.COLOR_CYAN), ("gr", curses.COLOR_GREEN),
+                                  ("ye", curses.COLOR_YELLOW), ("mg", curses.COLOR_MAGENTA),
+                                  ("bl", curses.COLOR_BLUE), ("rd", curses.COLOR_RED)], 1):
+        curses.init_pair(i, fg, -1); ATTR[nm] = curses.color_pair(i)
+    ATTR["cyb"] = ATTR["cy"] | curses.A_BOLD
+    ATTR["mgb"] = ATTR["mg"] | curses.A_BOLD
+    ATTR["th"] = curses.A_NORMAL  # thinking text — brighter than dim tool output
+    ATTR["dim"] = curses.A_DIM; ATTR["b"] = curses.A_BOLD; ATTR[""] = 0
+    # bars: soft sage-green; banner: warm terracotta (gray-reverse fallback on 8/16-color terms)
+    if curses.COLORS >= 256:
+        curses.init_pair(20, 235, 108)   # dark text on soft green  (#87af87)
+        curses.init_pair(21, 230, 173)   # cream on terracotta      (#d7875f)
+        ATTR["bar"] = curses.color_pair(20) | curses.A_BOLD
+        ATTR["barfoot"] = curses.color_pair(20)
+        ATTR["banner"] = curses.color_pair(21) | curses.A_BOLD
+    else:
+        ATTR["bar"] = ATTR["barfoot"] = curses.A_REVERSE
+        ATTR["banner"] = curses.A_REVERSE | curses.A_BOLD
+
+    def newest_mtime(d):
+        ag = glob.glob(os.path.join(d, "agent-*.jsonl"))
+        return max((os.path.getmtime(f) for f in ag), default=0)
+
+    def idx_of(fid): return next((n + 1 for n, x in enumerate(infos) if x["id"] == fid), "?")
+    def label_of(fid): return next((x["label"] for x in infos if x["id"] == fid), "?")
+    def goto(fid, why):  # switch focus with a transient banner + reset scroll
+        nonlocal focus, scroll, flash, flash_until
+        focus, scroll, flash, flash_until = fid, 0, f"▶ now following #{idx_of(fid)} · {label_of(fid)}{why}", time.time() + 2.6
+
+    infos = roster(run_dir)
+    mode = "list"; sel = 0; focus = None; scroll = 0; flash = ""; flash_until = 0.0
+    if preselect and any(i["id"] == preselect for i in infos):
+        mode, focus = "focus", preselect
+
+    while True:
+        infos = roster(run_dir)
+        complete = bool(infos) and all(i["status"] == "done" for i in infos)
+        if not any(i["status"] == "running" for i in infos):  # adopt a newer run when idle
+            runs = find_runs()
+            if runs and runs[0][1] != run_dir and runs[0][0] > newest_mtime(run_dir):
+                run_dir, mode, focus, sel, scroll = runs[0][1], "list", None, 0, 0
+                infos = roster(run_dir)
+                complete = bool(infos) and all(i["status"] == "done" for i in infos)
+
+        if mode == "focus":
+            a = next((x for x in infos if x["id"] == focus), None)
+            if a is None and infos:
+                focus = infos[-1]["id"]
+            elif a and a["status"] == "done" and not complete:  # auto-advance to next unfinished
+                run = sorted([x for x in infos if x["status"] == "running"], key=lambda i: i["mtime"])
+                if run and run[-1]["id"] != focus:
+                    goto(run[-1]["id"], f"  (auto-advanced — #{idx_of(focus)} {label_of(focus)} finished)")
+            banner = flash if time.time() < flash_until else ""
+            scroll = _draw_focus(stdscr, run_dir, focus, infos, reasoning_only, raw,
+                                 complete, scroll, banner)
+        else:
+            sel = max(0, min(sel, len(infos) - 1)) if infos else 0
+            _draw_list(stdscr, run_dir, infos, sel, complete)
+        curses.doupdate()
+
+        k = stdscr.getch()
+        if k == -1:
+            continue
+        if mode == "list":
+            if k == ord("q"): break
+            elif k in (curses.KEY_UP, ord("k")): sel = max(0, sel - 1)
+            elif k in (curses.KEY_DOWN, ord("j")): sel = min(len(infos) - 1, sel + 1)
+            elif k in (curses.KEY_ENTER, 10, 13) and infos:
+                mode = "focus"; goto(infos[sel]["id"], "")
+        else:
+            cur = next((n for n, x in enumerate(infos) if x["id"] == focus), 0)
+            ph = max(1, (stdscr.getmaxyx()[0] - 3))
+            if k == ord("q"): break
+            elif k in (ord("b"), 27, curses.KEY_LEFT): mode = "list"; sel = cur
+            elif k in (curses.KEY_UP, ord("k")): scroll += 1
+            elif k in (curses.KEY_DOWN, ord("j")): scroll = max(0, scroll - 1)
+            elif k == curses.KEY_PPAGE: scroll += ph
+            elif k == curses.KEY_NPAGE: scroll = max(0, scroll - ph)
+            elif k in (curses.KEY_HOME, ord("g")): scroll = 10 ** 9
+            elif k in (curses.KEY_END, ord("G")): scroll = 0
+            elif k in (9, ord("n"), curses.KEY_RIGHT) and infos:  # Tab / n → next agent
+                goto(infos[min(len(infos) - 1, cur + 1)]["id"], "")
+            elif k in (curses.KEY_BTAB, ord("p")) and infos:      # Shift-Tab / p → prev
+                goto(infos[max(0, cur - 1)]["id"], "")
+
+def tui(run_dir, reasoning_only=False, raw=False, preselect=None):
+    curses.wrapper(_tui_main, run_dir, reasoning_only, raw, preselect)
+
+# ── cli ───────────────────────────────────────────────────────────────────────
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("query", nargs="?")
+    ap.add_argument("-l", "--list", action="store_true")
+    ap.add_argument("-n", type=int)
+    ap.add_argument("-r", "--run")
+    ap.add_argument("--runs", action="store_true")
+    ap.add_argument("-R", "--reasoning", action="store_true")
+    ap.add_argument("--raw", action="store_true")
+    ap.add_argument("--stream", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    a = ap.parse_args()
+    if a.help:
+        print(__doc__); return
+
+    runs = find_runs()
+    if not runs:
+        print("No workflow runs under ~/.claude/projects/*/*/subagents/workflows/"); return
+
+    if a.runs:
+        box("recent workflow runs", [f"{len(runs)} found"])
+        print()
+        for mt, d, n in runs[:15]:
+            print(f"  {c(os.path.basename(d), 'cy'):<28} {n:>2} agents  "
+                  f"{c(ago(mt), 'dim'):<14} {c(d, 'dim')}")
+        return
+
+    if a.run:
+        m = [d for _, d, _ in runs if os.path.basename(d) == a.run or a.run in d]
+        if not m: print(f"No run matching {a.run!r}"); return
+        run_dir = m[0]
+    else:
+        run_dir = runs[0][1]
+
+    infos = roster(run_dir)
+
+    if a.list:  # roster + exit
+        print_roster(run_dir, infos); return
+
+    # resolve an optional focus target (id) from -n / query
+    target = None
+    if a.n:
+        if not (1 <= a.n <= len(infos)):
+            print_roster(run_dir, infos); print(f"\n-n out of range (1..{len(infos)})"); return
+        target = infos[a.n - 1]
+    elif a.query:
+        hits = [i for i in infos if a.query.lower() in i["search"]]
+        if not hits:
+            print_roster(run_dir, infos); print(f"\nNo agent matches {a.query!r}."); return
+        target = sorted(hits, key=lambda i: i["mtime"])[-1]
+
+    interactive = sys.stdout.isatty() and not a.stream
+    if interactive:  # default — full-screen picker, focus one agent, auto-advance
+        try:
+            tui(run_dir, reasoning_only=a.reasoning, raw=a.raw,
+                preselect=target["id"] if target else None)
+            return
+        except curses.error:
+            interactive = False  # terminal can't do curses — fall through to the streamer
+    print_roster(run_dir, infos)
+    if target: print(); follow(target, reasoning_only=a.reasoning, raw=a.raw)
+    else: follow_run(run_dir, reasoning_only=a.reasoning, raw=a.raw)
+
+if __name__ == "__main__":
+    main()
