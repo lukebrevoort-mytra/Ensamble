@@ -59,7 +59,9 @@ Let it run — it maps the shape, fans out reviewers, tags findings `bug` /
 
 ## 6 — Show the SHAPE first (comprehension before issues)
 The workflow returns `{ shape, riskMap, findings[], checks, mandatoryRequirements,
-coverage, verdictSuggested, reviewerRole }`. (`riskMap` carries the triage routing —
+coverageGaps[], coverageAssessment, coverage, verdictSuggested, reviewerRole }`.
+(`coverageGaps` is the completeness critic's read of what the sweep did NOT cover —
+an uncovered file, a dropped/missing risk lens, an unverified concern.) (`riskMap` carries the triage routing —
 subsystems & risk lenses — which you may surface briefly alongside the map.) Before
 any finding, present the **Change Map** so the user is oriented:
 1. **In chat — a tight text map** from `shape`: the one-line **intent**; the
@@ -89,18 +91,26 @@ Separate facts from judgment:
   eventual reviewer sees it. Frame findings as "a reviewer will likely raise this".
 - **Reviewer mode:** the user's picks become the review — what's REQUEST CHANGES vs
   nit vs dropped.
+- **Coverage gaps:** if `coverageGaps` has **high** entries, surface them before the
+  verdict as their own short list (area · why · recommendation) — these are not bugs
+  but places the sweep *didn't look* (a dropped lens, an uncovered file). Offer to
+  close them (re-run focused / `thorough`, or run the named lens) or accept the gap
+  knowingly. List med/low gaps without prompting.
 
 ## 8 — The user owns the verdict
 Treat `verdictSuggested` as a *starting point only*. The final verdict reflects the
 user's adjudication (plus the hard gates: a failed invariant gate or unmet mandatory
-requirement still can't be APPROVE — CONTRACT §4.8). State it as **their** decision,
+requirement still can't be APPROVE — CONTRACT §4.8). A **high coverage gap** also keeps
+it off a clean APPROVE until the user either closes the gap or accepts it knowingly —
+"we never looked" is not "we looked and it's fine". State it as **their** decision,
 not the bot's.
 
 ## 9 — Output & (reviewer) post-back
 Write the CONTRACT §6 report to `.workflows/review-<slug>.md` and print it inline:
 the Change Map, the verdict (the user's), adjudicated findings with their dispositions
-and reasons, the *Evidence / checks run* table, residual risks from `coverage`, and a
-link to the visual artifact.
+and reasons, the *Evidence / checks run* table, residual risks from `coverage` (include
+the **coverage gaps** + their disposition — closed / accepted — under Open questions or
+Risks), and a link to the visual artifact.
 - **Reviewer mode:** offer to post the findings the user kept as **inline PR review
   comments** (`gh pr review` / `gh api`). **Never post without explicit confirmation**;
   show exactly what will be posted first, and post only what they approve.
