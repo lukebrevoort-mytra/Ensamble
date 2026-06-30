@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Validate the workflow scripts in workflows/ WITHOUT executing them.
 //
-// The scripts in workflows/{spec,execute,review}.js run inside Claude Code's
+// The scripts in workflows/{ensemble-spec,ensemble-execute,ensemble-review}.js run inside Claude Code's
 // restricted Workflow sandbox (CONTRACT §4.2): they get seven injected globals
 // (agent, parallel, pipeline, log, phase, args, budget) and must NOT touch the
 // filesystem, Date.now(), Math.random(), argless `new Date()`, require(), or
@@ -38,7 +38,7 @@ export function listWorkflowScripts() {
 }
 
 // AC5: forbidden sandbox APIs, matched in their TRAILING-PAREN / argless forms so a
-// bare mention (e.g. the review.js:136 comment "no Date/Math.random") never trips —
+// bare mention (e.g. the ensemble-review.js:136 comment "no Date/Math.random") never trips —
 // only an actual call/access does. `new Date()` is argless-only: `new Date(args.ts)`
 // is allowed. Substring tokens use indexOf; `new Date()` needs a regex to tolerate
 // inner/surrounding whitespace while still requiring empty parens.

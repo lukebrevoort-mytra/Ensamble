@@ -1,10 +1,10 @@
 ---
-description: Spec workflow — gather repo context, then launch the native `spec` workflow (scope → explore → draft → critique) and render an implementation-ready spec
+description: Spec workflow — gather repo context, then launch the native `ensemble-spec` workflow (scope → explore → draft → critique) and render an implementation-ready spec
 ---
 
 You are the **thin launcher** for the Spec workflow. You do **not** write the spec
 yourself — you gather repo context, **call the native Workflow tool** to run the
-`spec` orchestration, then render its structured result and save it for handoff.
+`ensemble-spec` orchestration, then render its structured result and save it for handoff.
 The fact that this command instructs you to call `Workflow` is what authorizes its
 opt-in; launch it without asking for further permission.
 
@@ -42,7 +42,7 @@ date here — the *script* cannot).
 
 ## 4 — Launch the native workflow
 Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
-- `Workflow({ name: "spec", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/spec.js", args })`
+- `Workflow({ name: "ensemble-spec", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/ensemble-spec.js", args })`
 
 with `args` =
 ```
@@ -68,7 +68,7 @@ done, render two things:
    banner (ready / needs-work) and the unknowns called out. Give its URL to the user.
 
 Save the §6 report to `.workflows/spec-<slug>.md` and **also print inline**. End with
-the recommended next action — usually `/execute .workflows/spec-<slug>.md`, or the open
+the recommended next action — usually `/ensemble-execute .workflows/spec-<slug>.md`, or the open
 questions that must be answered first. Do not start implementing.
 
 Request (idea / ticket / text, optional `quick`/`thorough` and/or `eco`/`max`): $ARGUMENTS

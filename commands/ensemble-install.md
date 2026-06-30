@@ -2,7 +2,7 @@
 description: Install Ensemble — the Spec/Execute/Review/Debug workflows — into the current repo and retrofit them to its real stack, tests, services, and conventions
 ---
 
-Install **Ensemble** — the portable `/spec`, `/execute`, `/review`, `/debug` workflows
+Install **Ensemble** — the portable `/ensemble-spec`, `/ensemble-execute`, `/ensemble-review`, `/ensemble-debug` workflows
 — into the **current repo** and specialize them to *this* repo.
 
 Source of truth: the **Ensemble source repo** (wherever you cloned it — e.g.
@@ -13,23 +13,23 @@ Do this:
 
 **1 — Safety & target check.** Confirm the working directory is a git repo (`git
 rev-parse --show-toplevel`). If not, stop and ask the user for the target repo
-path. Never write outside the repo root. If `.claude/commands/spec.md` already
+path. Never write outside the repo root. If `.claude/commands/ensemble-spec.md` already
 exists, treat this as an update: diff against the kit and ask before overwriting
 human-edited files (never clobber a customized `repo-profile.md`).
 
 **2 — Copy the portable layer.** Into `<repo>/.claude/`:
    - `ensemble/CONTRACT.md`      ← from `<KIT>/CONTRACT.md`
-   - `commands/spec.md`          ← from `<KIT>/commands/spec.md`
-   - `commands/execute.md`       ← from `<KIT>/commands/execute.md`
-   - `commands/review.md`        ← from `<KIT>/commands/review.md`
-   - `commands/debug.md`         ← from `<KIT>/commands/debug.md`
-   - `workflows/spec.js`         ← from `<KIT>/workflows/spec.js`
-   - `workflows/execute.js`      ← from `<KIT>/workflows/execute.js`
-   - `workflows/review.js`       ← from `<KIT>/workflows/review.js`
-   - `workflows/debug.js`        ← from `<KIT>/workflows/debug.js`
+   - `commands/ensemble-spec.md`          ← from `<KIT>/commands/ensemble-spec.md`
+   - `commands/ensemble-execute.md`       ← from `<KIT>/commands/ensemble-execute.md`
+   - `commands/ensemble-review.md`        ← from `<KIT>/commands/ensemble-review.md`
+   - `commands/ensemble-debug.md`         ← from `<KIT>/commands/ensemble-debug.md`
+   - `workflows/ensemble-spec.js`         ← from `<KIT>/workflows/ensemble-spec.js`
+   - `workflows/ensemble-execute.js`      ← from `<KIT>/workflows/ensemble-execute.js`
+   - `workflows/ensemble-review.js`       ← from `<KIT>/workflows/ensemble-review.js`
+   - `workflows/ensemble-debug.js`        ← from `<KIT>/workflows/ensemble-debug.js`
      These four are the **native workflow scripts** the commands launch via the
      Workflow tool; they go in `.claude/workflows/` so they resolve as named
-     workflows (`Workflow({name: "spec"|"execute"|"review"|"debug"})`). Copy all four.
+     workflows (`Workflow({name: "ensemble-spec"|"ensemble-execute"|"ensemble-review"|"ensemble-debug"})`). Copy all four.
    These are identical across repos; copy verbatim.
 
 **3 — Gitignore the scratch space.** Ensure `.workflows/` is in the repo's
@@ -75,11 +75,11 @@ Using what recon found as a starting point, interview the user with
 useful* — ask only what you couldn't confidently detect, and offer your detected
 values as the default option:
    - the canonical commands you're unsure about (esp. single/scoped test runs);
-   - **Essential success tests** (high value — this seeds `/execute`'s criteria lock):
+   - **Essential success tests** (high value — this seeds `/ensemble-execute`'s criteria lock):
      which *existing* suites/tests/checks the user treats as the **ground-truth signal
      that a change actually succeeded** (not just "tests exist"), and **when each
      applies**. The agents can infer acceptance criteria from a spec, but they can miss
-     the one suite the user most trusts — asking here guarantees `/execute` assembles it
+     the one suite the user most trusts — asking here guarantees `/ensemble-execute` assembles it
      into the locked "done" contract every run. Record as `essentialTests: [{test,
      appliesWhen}]`. Distinct from invariants (properties that never regress) and from
      mandatory requirements (process/evidence gates): these are the positive
@@ -119,7 +119,7 @@ Mark anything still unverified with `~`. This file is committed and human-mainta
 
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an
-open question. Tell the user they can now run `/spec`, `/execute`, `/review`, `/debug`
+open question. Tell the user they can now run `/ensemble-spec`, `/ensemble-execute`, `/ensemble-review`, `/ensemble-debug`
 in this repo, and that to pull later kit updates they can run **`/ensemble-update`**
 (the light path — re-syncs the portable layer, no interview; `--all` updates every
 install at once) or re-run `/ensemble-install` for a full retrofit — neither touches

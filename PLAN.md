@@ -2,7 +2,7 @@
 
 Living architecture doc for the pivot. The kit used to be a **prompt harness** that
 treated Claude's native Workflow engine as an "optional accelerator" it never
-pressed. This plan makes that engine the **center**: `/spec /execute /review` become
+pressed. This plan makes that engine the **center**: `/ensemble-spec /ensemble-execute /ensemble-review` become
 thin launchers that drive real, deterministic, schema-validated native workflows —
 while a hard rule keeps the orchestrated subagents repo-aware and tool-aware so we
 don't pay the usual orchestration tax (lost repo context, unused repo tools).
@@ -34,23 +34,23 @@ in `CONTRACT.md §4`.
 | Layer | Files | Role | Committed? |
 |---|---|---|---|
 | **Guideline** | `CONTRACT.md` | Orchestration contract: launch model, sandbox truths, the standard agent brief, tool-awareness rule, adaptive scale, adversarial-verify, the canonical output schemas | ✅ portable, identical everywhere |
-| **Workflows** | `workflows/{spec,execute,review,debug}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
+| **Workflows** | `workflows/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
 | **Adjustment** | `commands/ensemble-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** the scripts read | ✅ per-repo |
-| **Entry points** | `commands/{spec,execute,review,debug}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
+| **Entry points** | `commands/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
 
 Ephemeral (gitignored): `.workflows/recon.md`, `.workflows/{spec,review}-<slug>.md`,
 workflow run journals.
 
-## How a command runs (the loop, using `/review`)
+## How a command runs (the loop, using `/ensemble-review`)
 
 1. **Command (main agent)** reads `CONTRACT.md` + `repo-profile.md`, ensures
    `recon.md` is fresh, resolves the diff target (`gh pr diff` / merge-base, *not*
    assume `main`), gathers the changed-file list + canonical commands as FACTs,
    and parses `roster / invariants / tools` out of the profile.
-2. It calls `Workflow({ name: 'review', args: { profile, recon, target, base,
+2. It calls `Workflow({ name: 'ensemble-review', args: { profile, recon, target, base,
    changedFiles, commands, roster, invariants, tools, scale, slug } })`. The command
    *instructing* this call is what satisfies the Workflow tool's opt-in requirement.
-3. **`review.js`** orchestrates: Triage → Review (one specialist per matched roster
+3. **`ensemble-review.js`** orchestrates: Triage → Review (one specialist per matched roster
    role / risk lens) → Verify (adversarial refutation, panel when `thorough`) →
    Checks (canonical + invariant gate tests) — every prompt built through the
    standard brief. Returns a **structured** `{shape, riskMap, findings, checks,
@@ -73,7 +73,7 @@ Always launch a workflow; scale fan-out to diff size and the user's token target
 - **Cost mode** (`eco`/`balanced`/`max`, `args.costMode`) is an orthogonal $ dial over
   scale: it shifts per-agent effort one rung and the discretionary caps, and gates the
   **verify escalation ladder** (1 vote → full panel only when a finding isn't
-  *confidently* refuted, so the panel is spent only on contested findings). `/execute`
+  *confidently* refuted, so the panel is spent only on contested findings). `/ensemble-execute`
   applies it to effort only — never to the convergence loop. See CONTRACT §4.6.
 
 ## Mandatory requirements — how "change the workflow per repo" actually works (resolved)
@@ -91,9 +91,9 @@ screenshot of the working UI (browser MCP)"; "planner changes must run the sim
 scenario"; "migrations must pass the reversibility gate".
 
 Enforcement is a **verification loop, not a one-shot block**:
-- `/execute` — a verifier checks the required evidence exists; if not, work goes
+- `/ensemble-execute` — a verifier checks the required evidence exists; if not, work goes
   **back into the implement→verify loop** until it does (or BLOCKED ⛔ with why).
-- `/review` — an unmet mandatory requirement means the verdict **cannot be APPROVE**
+- `/ensemble-review` — an unmet mandatory requirement means the verdict **cannot be APPROVE**
   (`REQUEST CHANGES`, or `BLOCK` if unverifiable).
 
 ## Rollout status
@@ -101,33 +101,33 @@ Enforcement is a **verification loop, not a one-shot block**:
 - [x] Decisions locked: reference-first; adaptive scale.
 - [x] `PLAN.md` (this doc)
 - [x] `CONTRACT.md` rewritten as the orchestration guideline
-- [x] `workflows/review.js` — reference native workflow
-- [x] `commands/review.md` — thin launcher
+- [x] `workflows/ensemble-review.js` — reference native workflow
+- [x] `commands/ensemble-review.md` — thin launcher
 - [x] `templates/repo-profile.template.md` — machine-read fields (agentType, tools)
 - [x] `commands/ensemble-install.md` — copy `workflows/*`, emit machine-read profile
-- [x] **SIGN-OFF GATE cleared** — user approved the `/review` pattern + the
-      mandatory-requirements refinement, then said "build spec/execute, then validate"
-- [x] `workflows/spec.js` + `commands/spec.md`
-- [x] `workflows/execute.js` + `commands/execute.md` (implement→verify loop)
-- [x] `workflows/debug.js` + `commands/debug.md` — the **diagnose** workflow (Locate →
+- [x] **SIGN-OFF GATE cleared** — user approved the `/ensemble-review` pattern + the
+      mandatory-requirements refinement, then said "build spec/ensemble-execute, then validate"
+- [x] `workflows/ensemble-spec.js` + `commands/ensemble-spec.md`
+- [x] `workflows/ensemble-execute.js` + `commands/ensemble-execute.md` (implement→verify loop)
+- [x] `workflows/ensemble-debug.js` + `commands/ensemble-debug.md` — the **diagnose** workflow (Locate →
       always-Reproduce → Investigate fan-out → adversarial Verify → root cause + fix
       *route*). Passes the §4.1 anti-bloat test cleanly: its core is parallel hypothesis
       fan-out + *independent* reproduction + adversarial root-cause verification — none of
       it human-steered mid-run (the human decides what to do with the finished diagnosis).
-      It diagnoses only; the fix routes to `/execute` or `/spec`, so it never overlaps
-      `/execute`'s lane.
+      It diagnoses only; the fix routes to `/ensemble-execute` or `/ensemble-spec`, so it never overlaps
+      `/ensemble-execute`'s lane.
 - [x] `docs/architecture.html` — redrawn for the Workflow-centered model
 - [x] `README.md` — rewritten around the new model
-- [x] Live validation: ran `/review` end-to-end on this repo's own scripts
+- [x] Live validation: ran `/ensemble-review` end-to-end on this repo's own scripts
       (run `wf_fd99a799-7e2`) — engine + schemas + pipeline confirmed working; it
       caught a real install-copy-list bug (now fixed) and two stale-doc nits (fixed)
 
 ## Validation & hardening (live runs through the real engine)
 
-- `/review` (run `wf_fd99a799`) — engine + schemas + fan-out/verify pipeline confirmed;
+- `/ensemble-review` (run `wf_fd99a799`) — engine + schemas + fan-out/verify pipeline confirmed;
   caught a real install bug + stale docs (fixed).
-- `/spec` (run `wf_2248fef0`) — all four phases; produced a sharp, anchored spec.
-- `/execute` (run `wf_597e1916`) — implement→verify loop on that spec; also exercises
+- `/ensemble-spec` (run `wf_2248fef0`) — all four phases; produced a sharp, anchored spec.
+- `/ensemble-execute` (run `wf_597e1916`) — implement→verify loop on that spec; also exercises
   the per-phase compute feature via an explicit `phasePolicy`.
 
 Bugs the validation surfaced and fixed:
@@ -136,8 +136,8 @@ Bugs the validation surfaced and fixed:
   so `args.x` was `undefined` and every field silently defaulted — every installed
   workflow would have run on defaults. Fixed: each script normalizes
   `const A = typeof args === 'string' ? JSON.parse(args) : (args || {})` and reads `A.x`.
-- **`spec.js` lacked an empty-request guard** (found by `/spec` reviewing itself) —
-  added a fail-fast `if (!request.trim()) return {error}` mirroring `execute.js`.
+- **`ensemble-spec.js` lacked an empty-request guard** (found by `/ensemble-spec` reviewing itself) —
+  added a fail-fast `if (!request.trim()) return {error}` mirroring `ensemble-execute.js`.
 
 Feature added — **per-phase compute, effort-first** (CONTRACT §4.9): `compute(phase)`
 in each script sets `effort` (and an optional profile-pinned `model`) per `agent()`
@@ -151,7 +151,7 @@ the primary lever (portable, relative); model is pinned only when a repo warrant
 - **Q?** Where do installed scripts live — `.claude/workflows/*.js` (Workflow tool's
   named-workflow registry) is the assumption. The command falls back to `scriptPath`
   pointing at the kit if a repo hasn't installed them yet. Confirm during validation.
-- **Q?** Should `spec.js`/`execute.js` share a common `brief()` helper via a copied
+- **Q?** Should `ensemble-spec.js`/`ensemble-execute.js` share a common `brief()` helper via a copied
   `workflows/_lib.js`, or duplicate it per script (scripts are self-contained)? The
   Workflow tool wants self-contained scripts → lean toward duplication. Revisit when
   building spec/execute.

@@ -49,8 +49,8 @@ hint** — `eco` or `max` → `costMode` (default `balanced`). `scale` is thorou
 unless a finding is contested.
 
 ## 5 — Launch the native workflow
-`Workflow({ name: "review", args })` (installed) or `Workflow({ scriptPath:
-"<KIT>/workflows/review.js", args })` (not yet installed), with `args` =
+`Workflow({ name: "ensemble-review", args })` (installed) or `Workflow({ scriptPath:
+"<KIT>/workflows/ensemble-review.js", args })` (not yet installed), with `args` =
 ```
 { profile, profileDigest, recon, target, base, changedFiles, commands, roster, invariants, tools, mandatoryRequirements, phasePolicy, reviewerRole, focus, intent, outOfScope, scale, costMode, slug }
 ```
@@ -117,6 +117,6 @@ Risks), and a link to the visual artifact.
 - **Author mode:** no posting — the annotated artifact + report is the handoff to
   whoever reviews next.
 
-Review the code; do not fix it. If asked to fix, hand specific items to `/execute`.
+Review the code; do not fix it. If asked to fix, hand specific items to `/ensemble-execute`.
 
 Target (PR number/URL, branch, optional `quick`/`thorough` and/or `eco`/`max`, or empty for current branch): $ARGUMENTS

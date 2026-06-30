@@ -18,12 +18,12 @@ decision below. Cite the docs you read.>
 ## Non-negotiable invariants & their gate tests
 The properties that must never regress, each paired with the *exact* check that
 proves it. The workflows treat these as **automatic acceptance criteria** for any
-change in their blast radius, and `/review` weights them by default.
+change in their blast radius, and `/ensemble-review` weights them by default.
 - **<invariant>** — proven by: `<test/command>` — applies when: <which paths>
 
 ## Essential success tests — the ground-truth "did it work?" signals
 The *existing* suites/tests/checks this repo treats as the **trusted signal that a
-change actually succeeded**, each with when it applies. `/execute` assembles the
+change actually succeeded**, each with when it applies. `/ensemble-execute` assembles the
 applicable ones into the **locked passing criteria** it confirms with you before the
 loop runs (CONTRACT §4.8), so the loop can't declare done without them — this is how
 the user guarantees the loop picks up the tests they care about, rather than relying on
@@ -40,8 +40,8 @@ What this repo treats as **non-negotiable** for a change, decided by the user du
 "properties that never regress" (those are invariants above) but **process/evidence
 requirements**: a cycle that must run, a tool that must be used, an artifact that
 must be produced. **Machine-read by the scripts — keep the three fields exact.**
-Enforcement is a loop: `/execute`'s verifier sends work back until the evidence
-exists; `/review` refuses APPROVE without it.
+Enforcement is a loop: `/ensemble-execute`'s verifier sends work back until the evidence
+exists; `/ensemble-review` refuses APPROVE without it.
 - **<requirement>** — `appliesWhen:` <which changes trigger it> — `requiredEvidence:`
   <the concrete proof: a passing test name, eval/sim output, a screenshot of the
   working UI, a soak result>
@@ -109,7 +109,7 @@ Each entry is **machine-read by the workflow scripts**, so keep the fields exact
 How a change is actually proven *done* here — this differs sharply by repo type
 (eval-grounding-driven for an LLM agent; sim-scenario-driven for a simulator;
 browser-flow + data-diff for a data UI; load/soak for a perf service). Spell out
-the loop and the acceptance signal so `/execute` adopts it.
+the loop and the acceptance signal so `/ensemble-execute` adopts it.
 - **Acceptance signal:** <what actually proves correctness beyond "tests pass">
 - **Inner loop:** <the per-change verify cycle for this repo>
 - **Tooling/harness to drive it:** <sim runner, eval harness, browser, fixtures>
@@ -120,8 +120,8 @@ this whole section to use the built-in defaults** (mechanical phases low, hard-
 reasoning phases high, model = the session model). Set `effort` to retune a phase;
 pin `model` **only** when this repo genuinely needs a specific tier for a phase
 (otherwise it's inherited — pinning model names is brittle). Phases by workflow:
-`spec` → scope · gather · draft · critique; `execute` → plan · implement · verify ·
-checks; `review` → shape · review · verify · checks. Machine-read as
+`ensemble-spec` → scope · gather · draft · critique; `ensemble-execute` → plan · implement · verify ·
+checks; `ensemble-review` → shape · review · verify · checks. Machine-read as
 `phasePolicy: {phase: {effort, model}}` — keep the field names exact.
 - **<phase>** — `effort:` <low|medium|high|xhigh|max> — `model:` <optional: haiku|sonnet|opus|fable>
   - e.g. **gather** — effort: low   (huge codebase; broad sweeps should stay cheap)

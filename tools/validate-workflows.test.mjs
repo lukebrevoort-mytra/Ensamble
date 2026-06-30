@@ -31,7 +31,7 @@ function checkSource(src) {
 test('AC2: enumerates exactly the workflows/*.js scripts', () => {
   const scripts = listWorkflowScripts()
   const names = scripts.map((f) => path.basename(f))
-  assert.deepEqual(names, ['debug.js', 'execute.js', 'review.js', 'spec.js'], 'debug/execute/review/spec .js, sorted')
+  assert.deepEqual(names, ['ensemble-debug.js', 'ensemble-execute.js', 'ensemble-review.js', 'ensemble-spec.js'], 'debug/ensemble-execute/ensemble-review/ensemble-spec .js, sorted')
 })
 
 test('AC2: every target is an absolute path under workflows/, ending in .js', () => {
@@ -186,7 +186,7 @@ test('AC5: argless `new Date()` with inner whitespace is still flagged', () => {
   )
 })
 
-test('AC5: review.js:136 comment (bare Date / Math.random) does NOT false-positive', () => {
+test('AC5: ensemble-review.js:136 comment (bare Date / Math.random) does NOT false-positive', () => {
   // The real comment contains "Date" and "Math.random" but neither trailing-paren form.
   const src =
     'export const meta = { name: "probe" }\n' +
@@ -215,7 +215,7 @@ test('AC1/AC6: clean tree prints exactly one ✓ line per workflow and exits 0',
   const lines = out.trim().split('\n')
   assert.deepEqual(
     lines,
-    ['✓ workflows/debug.js', '✓ workflows/execute.js', '✓ workflows/review.js', '✓ workflows/spec.js'],
+    ['✓ workflows/ensemble-debug.js', '✓ workflows/ensemble-execute.js', '✓ workflows/ensemble-review.js', '✓ workflows/ensemble-spec.js'],
     'exactly one ✓ line per workflows/*.js, in sorted order, no extra summary line',
   )
   // execFileSync throws on non-zero exit; reaching here proves exit 0 on a clean tree.

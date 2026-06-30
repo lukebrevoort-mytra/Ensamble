@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'spec',
+  name: 'ensemble-spec',
   description: 'Turn a request into an implementation-ready spec grounded in this repo: scope the change, fan out explorers for real context, draft testable criteria, then adversarially critique the spec',
   phases: [
     { title: 'Scope', detail: 'identify the areas/patterns the request touches' },
@@ -145,8 +145,8 @@ const CRITIQUE_SCHEMA = {
 }
 
 // Fail fast on an empty/whitespace-only request — before spending any agent
-// (mirrors execute.js's `if (!spec)` guard). Found by /spec reviewing itself.
-if (!request.trim()) return { error: 'No request provided — /spec needs an idea, ticket, or description of the change to spec.' }
+// (mirrors ensemble-execute.js's `if (!spec)` guard). Found by /ensemble-spec reviewing itself.
+if (!request.trim()) return { error: 'No request provided — /ensemble-spec needs an idea, ticket, or description of the change to spec.' }
 
 log(`Speccing: ${request.slice(0, 80)}${request.length > 80 ? '…' : ''} (scale=${scale}, cost=${costMode})`)
 
@@ -162,7 +162,7 @@ const scoped = await agent(
   }),
   { schema: SCOPE_SCHEMA, phase: 'Scope', label: 'scope', ...compute('Scope') }
 )
-if (!scoped) return { error: 'Could not scope the request — re-run /spec with more detail.' }
+if (!scoped) return { error: 'Could not scope the request — re-run /ensemble-spec with more detail.' }
 
 let areas = (scoped.areas || []).slice(0, AREA_CAP)
 if ((scoped.areas || []).length > AREA_CAP) log(`Capping ${scoped.areas.length} areas to ${AREA_CAP} (scale=${scale})`)

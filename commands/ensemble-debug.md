@@ -4,11 +4,11 @@ description: Debug workflow — from a bug report, locate the bug, ALWAYS try to
 
 You are the **thin launcher** for the Debug workflow. You do **not** diagnose the bug
 yourself — you gather repo context, **call the native Workflow tool** to run the
-`debug` orchestration, then render its structured diagnosis and save it for handoff.
+`ensemble-debug` orchestration, then render its structured diagnosis and save it for handoff.
 This command instructing you to call `Workflow` is what authorizes its opt-in; launch
-it without asking for further permission. `/debug` **diagnoses** — it reproduces the
+it without asking for further permission. `/ensemble-debug` **diagnoses** — it reproduces the
 bug, finds the root cause, and proposes a *route* to a fix; it does **not** implement
-the fix. The fix hands off to `/execute` (concrete route) or `/spec` (needs design).
+the fix. The fix hands off to `/ensemble-execute` (concrete route) or `/ensemble-spec` (needs design).
 
 ## 1 — Load the rules & profile
 1. Read `.claude/ensemble/CONTRACT.md` and obey it for the whole run.
@@ -53,7 +53,7 @@ hypotheses to chase; `costMode` sets spend — orthogonal dials (CONTRACT §4.6)
 
 ## 4 — Launch the native workflow
 Call the Workflow tool — installed name first, kit `scriptPath` as fallback:
-- `Workflow({ name: "debug", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/debug.js", args })`
+- `Workflow({ name: "ensemble-debug", args })` · fallback `Workflow({ scriptPath: "<KIT>/workflows/ensemble-debug.js", args })`
 
 with `args` =
 ```
@@ -96,11 +96,11 @@ the fix (skip the artifact). Otherwise render two things:
 
 Save the §6 report to `.workflows/debug-<slug>.md` and **also print inline**. End with the
 recommended next action:
-- a **confirmed, reproduced** diagnosis with a concrete route → offer `/execute` (or
-  `/spec` if `fixRoute.handoff` is `spec`), wiring in `testToProveFixed` as the regression test;
+- a **confirmed, reproduced** diagnosis with a concrete route → offer `/ensemble-execute` (or
+  `/ensemble-spec` if `fixRoute.handoff` is `spec`), wiring in `testToProveFixed` as the regression test;
 - an **unreproduced or unconfirmed** diagnosis → recommend what would confirm it (the
-  missing env/creds/data, or a `/spec` to design the investigation further) before fixing.
+  missing env/creds/data, or a `/ensemble-spec` to design the investigation further) before fixing.
 
-Do not implement the fix yourself — `/debug` diagnoses; the fix is a separate, human-owned step.
+Do not implement the fix yourself — `/ensemble-debug` diagnoses; the fix is a separate, human-owned step.
 
 Bug report (symptom / repro steps / env / logs / ticket ref, optional `quick`/`thorough` and/or `eco`/`max`): $ARGUMENTS
