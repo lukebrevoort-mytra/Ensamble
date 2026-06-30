@@ -413,17 +413,21 @@ def _draw_band(win, y0, w, band_h, frame, playing):
     off = (frame * 2) % len(_NOTE_PAT) if playing else 0
     tiled = _NOTE_PAT * (w // len(_NOTE_PAT) + 2)
     notes = tiled[off:off + max(0, w - 2)] if playing else "        ♩           ♩           ♩"
-    n, cw, gap = 4, 7, 5                               # crab "\(o_o)/" is 7 wide
+    n, cw, gap = 4, 9, 4                               # crab+instrument ≤9 wide
     start = max(1, (w - (n * cw + (n - 1) * gap)) // 2)
-    def crab(i):
-        eyes = "^_^" if not playing else _CRAB_EYES[(frame + i) % len(_CRAB_EYES)]
-        return "\\(" + eyes + ")/"
+    def crab(i):                                       # each crab plays a different axe
+        eyes = "^_^" if not playing else _CRAB_EYES[(frame // 2 + i) % len(_CRAB_EYES)]
+        if i == 0: return "\\(" + eyes + ")~o"        # saxophone
+        if i == 1: return "\\(" + eyes + ")=▷"        # trumpet
+        if i == 2: return "\\(" + eyes + ")╫"         # upright bass
+        l, r = ("\\", "/") if (not playing or frame % 2 == 0) else ("/", "\\")
+        return l + "(" + eyes + ")" + r + "▢"          # drums — sticks flip to the beat
     _put(win, y0, 0, [("note" if playing else "dim", " " + notes)], w)
     if band_h >= 4:
         for i in range(n):                            # bob between two rows = groove
             up = playing and ((frame + i) % 2 == 0)
             _put(win, y0 + (1 if up else 2), start + i * (cw + gap), [("crab", crab(i))], w)
-        cap = "♪ ~ the crab jazz quartet ~ ♪" if playing else "✦ that's a wrap — bravo! ✦"
+        cap = "♪ sax · trumpet · bass · drums ♪" if playing else "✦ that's a wrap — bravo! ✦"
         _put(win, y0 + 3, max(1, (w - len(cap)) // 2), [("dim", cap)], w)
     else:                                             # compact: one crab row
         for i in range(n):
