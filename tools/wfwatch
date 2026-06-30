@@ -387,7 +387,7 @@ def _draw_list(win, run_dir, infos, sel, complete):
     ndone = sum(1 for i in infos if i["status"] == "done")
     nrun = sum(1 for i in infos if i["status"] == "running")
     _bar(win, 0, w, f"{os.path.basename(run_dir)}   {len(infos)} agents · {ndone} done · {nrun} running",
-         "✓ complete" if complete else ("● live" if nrun else "idle"))
+         "✓ complete" if complete else ("● live" if nrun else "idle"), attr=ATTR["bar"])
     for i, a in enumerate(infos):
         y = 2 + i
         if y >= h - 1: break
@@ -402,7 +402,7 @@ def _draw_list(win, run_dir, infos, sel, complete):
         else:
             _put(win, y, 0, [("", "  "), stat, ("cyb", f"  {nm:<36}"),
                              ("dim", f" ({a['type']}){tail}")], w)
-    _bar(win, h - 1, w, "↑↓ select · ⏎ open · q quit", attr=curses.A_DIM | curses.A_REVERSE)
+    _bar(win, h - 1, w, "↑↓/jk select · ⏎ open · q quit", attr=ATTR["barfoot"])
     win.noutrefresh()
 
 def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll, banner):
@@ -420,7 +420,7 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
 
     top = 1
     if banner:
-        _bar(win, 1, w, banner, attr=ATTR["ye"] | curses.A_BOLD | curses.A_REVERSE)
+        _bar(win, 1, w, banner, attr=ATTR["banner"])
         top = 2
     body_h = max(1, (h - 1) - top)
     max_scroll = max(0, len(lines) - body_h)
@@ -434,15 +434,15 @@ def _draw_focus(win, run_dir, aid, infos, reasoning_only, raw, complete, scroll,
     sdot = "● running" if running else "✔ done"
     right = "LIVE ●" if (running and scroll == 0) else (f"⇡ {scroll} (End=live)" if scroll else "✔")
     _bar(win, 0, w, f"#{idx}/{len(infos)}  {a['label']}   {sdot}   "
-                    f"{a['type']} · {a['tools']}t · {fmt_tok(a['toks'])} tok", right)
+                    f"{a['type']} · {a['tools']}t · {fmt_tok(a['toks'])} tok", right, attr=ATTR["bar"])
     # footer bar
     if complete:
-        foot = "✓ run complete    ↑↓ scroll · ⇥ next agent · b list · q quit"
+        foot = "✓ run complete    ↑↓/jk scroll · ⇥ next agent · b list · q quit"
     elif a["status"] == "done":
-        foot = "agent done — advancing to next unfinished…    ↑↓ scroll · b list · q quit"
+        foot = "agent done — advancing to next unfinished…    ↑↓/jk scroll · b list · q quit"
     else:
-        foot = "↑↓ scroll · End live · ⇥/⇧⇥ switch agent · b list · q quit"
-    _bar(win, h - 1, w, foot, attr=curses.A_DIM | curses.A_REVERSE)
+        foot = "↑↓/jk scroll · End live · ⇥/⇧⇥ switch agent · b list · q quit"
+    _bar(win, h - 1, w, foot, attr=ATTR["barfoot"])
     win.noutrefresh()
     return scroll
 
@@ -457,6 +457,16 @@ def _tui_main(stdscr, run_dir, reasoning_only, raw, preselect):
     ATTR["mgb"] = ATTR["mg"] | curses.A_BOLD
     ATTR["th"] = curses.A_NORMAL  # thinking text — brighter than dim tool output
     ATTR["dim"] = curses.A_DIM; ATTR["b"] = curses.A_BOLD; ATTR[""] = 0
+    # bars: soft sage-green; banner: warm terracotta (gray-reverse fallback on 8/16-color terms)
+    if curses.COLORS >= 256:
+        curses.init_pair(20, 235, 108)   # dark text on soft green  (#87af87)
+        curses.init_pair(21, 230, 173)   # cream on terracotta      (#d7875f)
+        ATTR["bar"] = curses.color_pair(20) | curses.A_BOLD
+        ATTR["barfoot"] = curses.color_pair(20)
+        ATTR["banner"] = curses.color_pair(21) | curses.A_BOLD
+    else:
+        ATTR["bar"] = ATTR["barfoot"] = curses.A_REVERSE
+        ATTR["banner"] = curses.A_REVERSE | curses.A_BOLD
 
     def newest_mtime(d):
         ag = glob.glob(os.path.join(d, "agent-*.jsonl"))
