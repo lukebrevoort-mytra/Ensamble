@@ -70,10 +70,11 @@ modules — don't just point at them. Then derive, with citations:
    - **Live real-run verification (CONTRACT §4.11 — the highest-value gate)** — the
      *concrete, runnable* form of the above: can this repo prove a change **through the
      real running service the way a user hits it**? Detect the boot command (dev/run
-     script, `docker compose`, devcontainer), its health signal, how to probe the real
-     flow (HTTP endpoint, browser MCP, CLI), and teardown. This is what makes the loop's
-     "done" trustworthy — great real-run testing is the whole thesis. If the repo has no
-     runnable service/flow, note that (the gate won't apply).
+     script, `docker compose`, devcontainer), its health signal, a **runnable check** that
+     proves the flow (a `curl … | assert`, an e2e/scenario invocation, or a browser-MCP
+     recipe), and teardown. This is what makes the loop's "done" trustworthy — great
+     real-run testing is the whole thesis. If the repo has no runnable service/flow, note
+     that (the gate won't apply).
    A simulation-heavy k8s repo and a data-intensive UI repo must come out of this
    step with *different rosters and different acceptance models*. If they don't,
    you did this step wrong.
@@ -96,12 +97,13 @@ values as the default option:
      mandatory requirements (process/evidence gates): these are the positive
      "did it work?" signals. Surface your best guesses and let the user confirm/add.
    - **Live real-run method** (CONTRACT §4.11 — the highest-value elicitation) —
-     detect → propose → ask: present your derived boot command / health signal / probe
-     patterns / teardown from 4b and ask the user to confirm or correct — *"here's how the
-     loop will prove a change works through the real service — right?"*. If you couldn't
-     detect a runnable flow, ask whether one exists and how to start it. Populate the
-     profile's **Live real-run verification** section; if there genuinely is no runnable
-     service, say so and omit the section (the gate won't apply).
+     detect → propose → ask: present your derived boot command / health signal / **runnable
+     real-run check(s)** / teardown from 4b and ask the user to confirm or correct — *"here's
+     how the loop will prove a change works through the real service — right?"*. If you
+     couldn't detect a runnable flow, ask whether one exists and how to start it. Populate the
+     profile's **Live real-run verification** section as recorded checks keyed by
+     `appliesWhen`; if there genuinely is no runnable service, say so and omit the section
+     (the gate won't apply).
    - **test/simulation/fixture harnesses** the agents should drive;
    - **MCP servers / local services** connected to this repo and when agents may
      use them (DB, browser, issue tracker, docs) — this is what makes the agents

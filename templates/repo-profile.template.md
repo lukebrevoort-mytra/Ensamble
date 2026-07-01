@@ -131,15 +131,16 @@ the gate then does not apply. **Machine-read — keep the field labels exact.**
   config change under test is exercised for real.
 - **Health signal:** <how to know it's up before probing — e.g. `GET /health` → 200, a log
   line, a port open. The launcher polls this.>
-- **Probe how:** <how to send a probe to the real flow — `curl` the endpoint, drive the
-  browser MCP to the view, invoke the CLI>.
-- **Probe patterns** (the launcher derives 1–3 directed probes from these + the diff/spec;
-  **this list is also your personal gate library** — a per-task method you promote from a
-  run lands here as a new pattern, keyed by `appliesWhen`):
-  - e.g. **pricing/checkout change** → POST `/quote` with a sample cart; assert total + tax
-    match the change.
-  - e.g. **UI view change** → open the view in the browser MCP; assert the changed element
-    renders and behaves.
+- **Real-run checks** (runnable, keyed by `appliesWhen` — the launcher **runs** the matching
+  check against the real service; it does *not* invent probes per run. **This list is your
+  personal gate library** — a per-task check you promote from a run lands here, keyed by
+  `appliesWhen`):
+  - e.g. **pricing/checkout change** (`appliesWhen: api/quote/**`) → `curl -fsS
+    :PORT/quote -d @fixtures/sample-cart.json | jq -e '.total==… and .tax==…'`.
+  - e.g. **has an e2e/scenario harness** (`appliesWhen: …`) → the exact invocation, e.g.
+    `npx playwright test orders.spec.ts`.
+  - e.g. **UI view change, no assertable check** (`appliesWhen: web/**`) → browser-MCP
+    recipe: open the view, assert the changed element renders; screenshot as proof.
 - **Retry cap:** <max gate attempts before handing back `needs-you`; default 3>
 - **Teardown:** `<command to stop the service/flow when done>`
 

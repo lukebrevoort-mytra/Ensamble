@@ -81,9 +81,9 @@ in the report that the criteria were assembled-not-confirmed.
 **d. Confirm & pre-check the live real-run method (CONTRACT §4.11 front touchpoint).**
 If `repo-profile.md` has a **`## Live real-run verification`** section, lock the real-tool
 gate *here* — not at the end:
-- **Propose the method** from the profile's probe patterns + this change. If the user gave
-  a per-task "here's how I'd test this once done," use that; also recall any saved personal
-  gate (a profile Live real-run pattern) whose `appliesWhen` matches this change and offer it.
+- **Propose the method** — select the recorded real-run check whose `appliesWhen` matches
+  this change. If the user gave a per-task "here's how I'd test this once done," use that;
+  also recall any saved personal gate (a recorded check) whose `appliesWhen` matches and offer it.
 - **Confirm it** with the human (one light `AskUserQuestion`) — the method is theirs to own.
 - **Pre-check feasibility now:** stand the flow up (boot per the profile / open the browser
   MCP / locate the harness) and confirm it *can* run in this environment. If it **can't**,
@@ -122,17 +122,19 @@ labeled fallback was accepted at §4d because the real flow can't run here → s
 1. Apply the profile's **skip check**. If the change is outside its runtime-reachable surface
    (test-only / docs / infra-only), note the skip **with its reason** and keep the workflow's
    `exitState` — the gate is not-applicable, not passed.
-2. Otherwise run the four moves (CONTRACT §4.11): derive 1–3 directed probes from the spec +
-   diff, boot the service per the profile with the branch's *current* config, poll its health
-   signal, probe the real endpoint, judge each answer PASS/FAIL/BLOCKED, then tear it down.
+2. Otherwise run the gate (CONTRACT §4.11): select the recorded real-run check(s) whose
+   `appliesWhen` matches the spec + diff, boot the service per the profile with the branch's
+   *current* config, poll its health signal, run each check against the real endpoint (or drive
+   the browser-MCP recipe for the unscriptable rung), read its PASS/FAIL/BLOCKED result, then
+   tear it down.
 3. Set the **effective exit** the render uses:
    - **PASS / skipped** → `exitState` unchanged (a `complete` loop stays `complete`).
-   - **FAIL** → append the failing probe(s) as a new criterion/feedback and **re-run
+   - **FAIL** → append the failing check(s) as a new criterion/feedback and **re-run
      `/ensemble-execute`** so the loop fixes the real defect; cap at **3 gate attempts total**, then set
      the effective exit to `needs-you` and hand back with the live evidence.
    - **BLOCKED** → do not report `complete`; carry the blocker into the render (`needs-you` /
      `blocked` per cause) — never a silent pass.
-Carry the probes, answers, and per-probe verdicts into the §7 report + artifact.
+Carry the checks, results, and per-check verdicts into the §7 report + artifact.
 
 ## 7 — Render by exit state & hand off
 The workflow returns `{ exitState, converged, stopReason, rounds, criteriaWereConfirmed,
@@ -149,8 +151,8 @@ different handoff. Render two things:
    human-locked. Note any **simplicity-gate** activity: tasks the verifier sent back to trim
    (`coverage.bloatPruned`) and any accepted with residual bloat (`coverage.bloatResidual`) —
    surface the latter as an advisory the user can act on. Add a **Live real-run
-   verification** block (§4.11): the probes asked, the real answers (trimmed), and
-   PASS/FAIL/BLOCKED per probe with the boot evidence — the proof the change works through
+   verification** block (§4.11): the checks run, the real results (trimmed), and
+   PASS/FAIL/BLOCKED per check with the boot evidence — the proof the change works through
    the real service (or the stated skip reason).
 2. **A visual artifact** — render the return object into a self-contained HTML page via the
    **Artifact tool** (load the `artifact-design` skill / house style: Fraunces + Spline
@@ -159,8 +161,8 @@ different handoff. Render two things:
    **criteria scorecard** (each locked criterion → met/unmet, colored), the **task ledger
    as a table** (one row per task, colored by status, with its criterion id, rounds, and
    evidence), the *Evidence / checks run* table (pass/fail/blocked badges + key line), the
-   mandatory requirements with their status, the **live real-run panel** (each probe →
-   trimmed answer → PASS/FAIL/BLOCKED badge + boot evidence), and the recommended next
+   mandatory requirements with their status, the **live real-run panel** (each check →
+   trimmed result → PASS/FAIL/BLOCKED badge + boot evidence), and the recommended next
    action. Give its URL.
 
 Then branch on `exitState`:

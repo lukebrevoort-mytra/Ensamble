@@ -381,8 +381,19 @@ that real flow. (No such profile section → this gate does not apply; skip it s
 Scripts can't boot services (§4.2), so this gate is **launcher-orchestrated** at **two
 touchpoints**: a *feasibility pre-check* when the criteria are locked (front), and the
 *real-run verification* after the workflow returns (end). Everything about *how* — boot command,
-health signal, probe endpoint, retry cap — comes from the profile's section; the contract
+health signal, the check to run, retry cap — comes from the profile's section; the contract
 below is the repo-agnostic shape.
+
+**Frozen command, not a derived probe.** The gate runs a **recorded, runnable real-run
+check** — not an LLM-invented probe judged for "intent." Whether the service is alive is a
+deterministic question, so a deterministic command answers it with a real pass/fail, kept out
+of the token-hungry, non-reproducible derive-and-judge loop. The profile records these checks
+keyed by `appliesWhen`; a check is recorded at install or **promoted from an execute lock**
+(§4.8), never auto-derived fresh each run. The one exception is the **unscriptable behavioral
+rung** — a UI flow with no assertable check — where the recorded check is a captured
+**browser-MCP recipe** (boot → navigate → expected on-screen state) the launcher drives with a
+screenshot as proof. That is the *only* place an agent judges the result, reserved for proof
+that genuinely cannot be scripted.
 
 **Feasibility pre-check (at the lock — §4.8, §4.10).** Before the loop runs, the launcher
 confirms the gate is *runnable here* and **confirms the method with the human**: it
@@ -395,32 +406,30 @@ per §3) or clears the environment. Never a silent downgrade, and never a full l
 only to find at the end that nothing could be verified. A per-task method the human gives
 here can be **promoted** into the personal profile (§7) for reuse, recalled by `appliesWhen`.
 
-Four moves (the end verification):
+Three moves (the end verification):
 1. **Skip check.** Run only when the change touches the profile's declared
    runtime-reachable surface. Out of scope (test-only / docs / infra-only) → **skip and say
    so** in the report. Never a silent skip — absence is a signal.
-2. **Derive probes.** Spawn a subagent that reads the change (diff+spec for execute/review;
-   the root cause for debug) + the profile's **probe-pattern table**, returning **1–3
-   directed questions**, each `{question, expectedSignal, why}` — `expectedSignal` states
-   what a correct answer must / must not contain, tied to what actually changed.
-3. **Run through the real flow.** Boot the service per the profile (its boot command +
-   the repo's *current* config, so a config change under test is exercised for real), wait
-   for its health signal, send each probe to the real endpoint, capture the real response.
-   Tear the service down per the profile when done.
-4. **Judge + fold.** A judge subagent scores each answer against its `expectedSignal`:
-   - **PASS** — service answered and the answer matches intent.
-   - **FAIL** — answered but the answer contradicts intent. A real defect.
-   - **BLOCKED** — couldn't boot / env missing / health never green / empty answer where
-     one was required. An environment gap, **not** a pass.
+2. **Run the recorded check through the real flow.** Select the check(s) whose `appliesWhen`
+   matches the change. Boot the service per the profile (its boot command + the repo's
+   *current* config, so a config change under test is exercised for real), wait for its health
+   signal, run each matching check against the real endpoint — or drive the browser-MCP recipe
+   for the unscriptable rung — and capture the real result as evidence. Tear the service down
+   per the profile when done.
+3. **Fold the result.** Each check yields a deterministic verdict:
+   - **PASS** — the check ran green against the real service.
+   - **FAIL** — the check ran and failed. A real defect.
+   - **BLOCKED** — couldn't boot / env missing / health never green / no runnable check for
+     the surface. An environment gap, **not** a pass.
    Fold a **Live real-run verification** block into the §6 report and the HTML artifact:
-   boot evidence, per-probe `question · trimmed answer · PASS/FAIL/BLOCKED + rationale`,
-   and the overall gate result.
+   boot evidence, per-check `check · trimmed result · PASS/FAIL/BLOCKED + rationale`, and the
+   overall gate result.
 
 The gate is required, so its result is load-bearing:
 - **`/ensemble-execute` & `/ensemble-review`** verify the change. **FAIL** blocks — execute cannot claim
-  `complete`, review cannot APPROVE (REQUEST CHANGES with the failing probe). **BLOCKED**
+  `complete`, review cannot APPROVE (REQUEST CHANGES with the failing check). **BLOCKED**
   likewise cannot be reported as done / APPROVE; surface it as an unverified invariant. On
-  an execute FAIL, append the failing probe as loop feedback and re-run the loop, up to the
+  an execute FAIL, append the failing check as loop feedback and re-run the loop, up to the
   profile's **retry cap** (default 3 attempts total); still failing → hand back `needs-you`
   with the live evidence.
 - **`/ensemble-debug`** uses it to **reproduce** the bug through the real flow: a live reproduction
@@ -513,4 +522,4 @@ Scripts can't write files; the **command** writes them after the workflow return
   (the installer adds it) — never assumed shared; you *may* commit it to share, but nothing
   relies on it. The profile *is* your personal gate library: your durable gates (invariants
   + the primary real-run method) plus the per-task real-run gates you **promote** from a run
-  — probe patterns keyed by `appliesWhen`, recalled when a later change matches (§4.11).
+  — real-run checks keyed by `appliesWhen`, recalled when a later change matches (§4.11).

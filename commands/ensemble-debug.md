@@ -67,8 +67,9 @@ verify the leading diagnosis.
 If `repo-profile.md` defines a **`## Live real-run verification`** section and the bug is
 reachable through the real service flow, corroborate the workflow's test-based
 `reproduction` with a **live** one: boot the service per the profile with the current
-config, derive probe(s) from the bug report that should trigger the symptom, send them to
-the real endpoint, and capture the real response as evidence — then tear it down (CONTRACT
+config, drive the input that should trigger the symptom — reusing a recorded real-run check
+whose `appliesWhen` matches, or constructing the repro from the bug report — against the real
+endpoint, and capture the real response as evidence — then tear it down (CONTRACT
 §4.11). A successful **live reproduction** is FACT-grade evidence for the diagnosis; if the
 symptom **can't** be reproduced live, say so plainly — it lowers confidence, it does not fix
 anything. Fold the result into the Reproduction panel in §5. Debug diagnoses: this gate

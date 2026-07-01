@@ -1,7 +1,12 @@
 # Dynamic, User-Shaped Verification Gates — Design
 
 > Enhancement to the Ensemble kit. Brainstormed + grilled 2026-07-01.
-> Status: **design + decisions locked; pending written-spec review → plan.**
+> Status: **SUPERSEDED (2026-07-01) by [`2026-07-01-dynamic-check-probe-and-prove-design.md`](./2026-07-01-dynamic-check-probe-and-prove-design.md).**
+> Kept for its grilled decisions + history. **What changed:** the runtime *derive-probes-and-LLM-judge*
+> mechanism below is replaced by a **frozen, recorded real-run check** run deterministically at the gate —
+> dynamism moves to *capture* (record/promote the check once), determinism to the *gate* (run it every
+> time). The per-run derivation this doc's thesis proposed burned tokens and made the gate
+> non-reproducible; CONTRACT §4.11 now reflects the frozen-command model.
 
 ## Thesis (north star)
 
