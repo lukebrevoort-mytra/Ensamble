@@ -136,6 +136,14 @@ Enforcement is a **verification loop, not a one-shot block**:
       "done" gate (feasibility pre-check at the lock + verification at the end) wired into
       execute/review/debug; `repo-profile.md` is now personal/gitignored config that doubles
       as the gate library (probe patterns keyed by `appliesWhen`, promotable from a run).
+- [x] **Install-time Probe & Prove capture** — `/ensemble-install` step 5b actively boots and
+      exercises the service, climbing a rung ladder (boot+reach → functional smoke →
+      behavioral) and recording a real-run check into the profile **only for rungs that ran
+      green**, `BLOCKED` honestly otherwise — never a fabricated green. `/ensemble-update
+      --reprobe` refreshes it. **Artifact model = profile-section** (the check lives in the
+      profile's `## Live real-run verification` section, keyed by `appliesWhen`) — the
+      committed `.ensemble/dynamic-check` script-first model was considered and dropped as it
+      contradicts the personal/gitignored gate library. Guarded by `tools/probe-and-prove.test.mjs`.
 
 ## Validation & hardening (live runs through the real engine)
 

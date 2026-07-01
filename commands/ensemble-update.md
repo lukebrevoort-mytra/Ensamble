@@ -6,7 +6,9 @@ Re-sync the **portable layer** of Ensemble (the files that are identical in ever
 repo) from the source kit into already-installed repos, **without** re-running the
 recon/interview and **without ever touching** the per-repo `repo-profile.md` or the
 `.workflows/` cache. This is the one-command answer to "the kit changed; update my
-repos." It is mechanical (file copy + validate) — no agents, no Workflow tool.
+repos." It is mechanical (file copy + validate) — no agents, no Workflow tool. The **one
+exception** is `--reprobe` (§5b): it re-runs install's Probe & Prove against the existing
+profile to refresh the real-run gate — agent-driven, and the only path that touches the profile.
 
 The portable layer = these 9 files, copied verbatim:
 `CONTRACT.md → .claude/ensemble/CONTRACT.md`, `commands/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.md →
@@ -33,6 +35,8 @@ Parse `$ARGUMENTS`:
 - `--all [<root>]` → **scan** `<root>` (default: the current working directory)
   for every directory containing `.claude/ensemble/CONTRACT.md` and update them all;
 - `--check` (any target form) → **dry-run**: report staleness, copy nothing.
+- `--reprobe` (any target form) → after the mechanical sync, re-run the Probe & Prove
+  phase against each target's existing profile (§5b). The only flag that touches the profile.
 
 `.claude/ensemble/CONTRACT.md` is the install marker — a dir without it is not an
 Ensemble install, skip it. List the targets you found before acting.
@@ -61,13 +65,27 @@ unlock new behavior (that section seeds `/ensemble-execute`'s criteria lock). **
 profile**; just tell the user which repos would benefit from a quick `/ensemble-install`
 re-interview or a hand-edit.
 
+## 5b — Re-probe (only with `--reprobe`)
+Skip this whole step unless `--reprobe` was passed. For each target that has a
+`## Live real-run verification` section in its profile, **re-run install's Probe & Prove
+phase** (`/ensemble-install` step 5b) against that repo's *existing* confirmed method: climb
+the ladder (boot+reach → functional smoke → behavioral), and **refresh** the recorded checks
++ each `provenAt` in the profile's Live real-run section — recording `BLOCKED` honestly for
+anything that no longer runs, never a fabricated green. This is the **only** step that edits
+the profile, and it edits **only** that section (everything else in the profile is preserved).
+A target with no such section → nothing to re-probe; note it and move on. All step-5b safety
+rules apply (local/ephemeral only, seed data, timeout-bounded, guaranteed teardown). In
+`--check` mode, do **not** boot or write — just report that a re-probe *would* run and which
+checks it would refresh (`--check` promises nothing is written; re-probing has side effects).
+
 ## 6 — Report
 Emit a compact summary:
 - the resolved `<KIT>` + whether it was pulled (and to which commit, via `git -C <KIT> rev-parse --short HEAD`);
 - a per-repo line: `repo — N files updated (names), M current; validate ✓; tracked/untracked; profile gaps: <sections or none>`;
+- with `--reprobe`, add each repo's re-probe outcome: highest rung reached per check + refreshed `provenAt`, and any check newly `BLOCKED`;
 - the bottom line + next step (e.g. "run `/ensemble-spec`/`/ensemble-execute` to use the updates"; for tracked `.claude/`, "commit the synced files in <repo>").
 
 In `--check` mode, report exactly the same staleness picture but state clearly that
 nothing was written.
 
-Target (a repo path · empty for current repo · `--all [<root>]` to sync every install · `--check` dry-run · `--kit <path>` / `--no-pull`): $ARGUMENTS
+Target (a repo path · empty for current repo · `--all [<root>]` to sync every install · `--check` dry-run · `--reprobe` re-prove the real-run gate · `--kit <path>` / `--no-pull`): $ARGUMENTS

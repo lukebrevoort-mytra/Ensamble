@@ -97,13 +97,13 @@ values as the default option:
      mandatory requirements (process/evidence gates): these are the positive
      "did it work?" signals. Surface your best guesses and let the user confirm/add.
    - **Live real-run method** (CONTRACT §4.11 — the highest-value elicitation) —
-     detect → propose → ask: present your derived boot command / health signal / **runnable
-     real-run check(s)** / teardown from 4b and ask the user to confirm or correct — *"here's
-     how the loop will prove a change works through the real service — right?"*. If you
-     couldn't detect a runnable flow, ask whether one exists and how to start it. Populate the
-     profile's **Live real-run verification** section as recorded checks keyed by
-     `appliesWhen`; if there genuinely is no runnable service, say so and omit the section
-     (the gate won't apply).
+     detect → propose → ask → **prove**: present your derived boot command / health signal /
+     **runnable real-run check(s)** / teardown from 4b and ask the user to confirm or correct
+     — *"here's how the loop will prove a change works through the real service — right?"*. If
+     you couldn't detect a runnable flow, ask whether one exists and how to start it. This
+     step only *confirms the method*; **step 5b then actively runs it** to record checks that
+     provably ran green. If there genuinely is no runnable service, say so and omit the
+     section (the gate won't apply, and 5b is skipped).
    - **test/simulation/fixture harnesses** the agents should drive;
    - **MCP servers / local services** connected to this repo and when agents may
      use them (DB, browser, issue tracker, docs) — this is what makes the agents
@@ -129,9 +129,38 @@ values as the default option:
      {effort, model}}` (CONTRACT §4.9). Defaults are fine for most repos — don't ask
      without a signal, and prefer `effort` over pinning a `model`.
 
+**5b — Probe & Prove (actively verify the real-run gate — don't just describe it).**
+This is what makes the §4.11 gate *trustworthy* instead of aspirational: you **run** the
+confirmed real-run method now and record only what provably ran green. **Skip** entirely if
+step 5 found no runnable service/flow (the gate won't apply). Otherwise **climb a ladder**,
+capturing real output at each rung, and **stop at the first rung that fails or is blocked**:
+   - **Rung 1 — boot + reach:** run the confirmed boot command against the branch's current
+     config, wait (time-boxed — never hang install) for the health signal, confirm the
+     interface answers (port open / health 200 / `--help`).
+   - **Rung 2 — functional smoke:** one real interaction returns an expected result — the
+     confirmed `curl … | assert`, a seeded query, or golden CLI output.
+   - **Rung 3 — behavioral:** drive the real user-facing flow. If the repo has an e2e/sim
+     harness, record its exact invocation (`npx playwright test …`, the scenario runner) as
+     the check. If not, drive it with the browser MCP (open the view, assert the changed
+     element renders) and record that as a browser-MCP recipe with a screenshot as proof.
+   Then:
+   - **Prove:** record a check into the profile's **Live real-run verification** section
+     **only for rungs that actually ran green**, annotated with the highest rung reached
+     (`boot`/`smoke`/`behavioral`) and `provenAt:` today's date. Save proof artifacts
+     (curl output, screenshots, scenario logs) under `.workflows/proof/` (gitignored scratch).
+   - **Record honestly:** a flow you couldn't exercise → record it `BLOCKED` with the reason
+     and how far it got (e.g. "reached rung 1: boots, health 200; smoke needs seed DB"). **Never
+     fabricate a green** — a BLOCKED check is the honest, useful outcome, not a failure to hide.
+   - **Always tear down** (trap-style: even if a rung throws or times out) using the confirmed
+     teardown command.
+   **Safety (non-negotiable):** local/ephemeral runs only, against seed/fixture data — **never**
+   production, shared infra, or real customer data; every wait is timeout-bounded; proof stays
+   local. This honors the Mytra AI-use policy (local app runs are fine; no data exfiltration).
+
 **6 — Write the profile.** Populate `<repo>/.claude/ensemble/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected
-+ confirmed values. The **Repo character**, **Invariants & gate tests**,
++ confirmed + **proven** values (record each real-run check with its rung + `provenAt`, or
+`BLOCKED` per step 5b — never a fabricated green). The **Repo character**, **Invariants & gate tests**,
 **Essential success tests**, **Mandatory requirements**, **Specialist roster**,
 **Execution mode**, and **Live real-run verification** (unless the repo has no runnable
 flow) sections are mandatory — a profile without them is just a command list and defeats
