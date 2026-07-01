@@ -6,6 +6,9 @@
 > treat confirmed entries as FACTs. This is the layer that makes the generic
 > workflows *specific* to this repo. Keep it current; it's the highest-value file.
 >
+> **Personal & gitignored** — your per-developer config, not shared team infra (the
+> installer gitignores it). You *may* commit it to share, but nothing relies on that.
+>
 > Convention: prefix unverified guesses with `~` (assumption) so workflows know
 > to confirm them. Confirmed entries need no prefix.
 
@@ -113,6 +116,32 @@ the loop and the acceptance signal so `/ensemble-execute` adopts it.
 - **Acceptance signal:** <what actually proves correctness beyond "tests pass">
 - **Inner loop:** <the per-change verify cycle for this repo>
 - **Tooling/harness to drive it:** <sim runner, eval harness, browser, fixtures>
+
+## Live real-run verification (CONTRACT §4.11 — the real-tool "done" gate)
+The concrete, executable form of the acceptance mode above: how the workflows prove a
+change **through the real running service the way a user hits it**, not just in the test
+harness. This is the highest-value gate — great real-run testing is what makes the
+autonomous loop trustworthy. Present → the launcher runs it at **two touchpoints**: a
+*feasibility pre-check* when criteria are locked, and *verification* after the run
+(CONTRACT §4.11). **Omit this whole section** if the repo has no runnable service/flow —
+the gate then does not apply. **Machine-read — keep the field labels exact.**
+- **Skip when:** <changes the gate does NOT apply to — test-only, docs, infra-only, or
+  paths outside the runtime-reachable surface. The launcher skips *and says so*.>
+- **Boot:** `<command to start the service/flow with the branch's CURRENT config>` — so a
+  config change under test is exercised for real.
+- **Health signal:** <how to know it's up before probing — e.g. `GET /health` → 200, a log
+  line, a port open. The launcher polls this.>
+- **Probe how:** <how to send a probe to the real flow — `curl` the endpoint, drive the
+  browser MCP to the view, invoke the CLI>.
+- **Probe patterns** (the launcher derives 1–3 directed probes from these + the diff/spec;
+  **this list is also your personal gate library** — a per-task method you promote from a
+  run lands here as a new pattern, keyed by `appliesWhen`):
+  - e.g. **pricing/checkout change** → POST `/quote` with a sample cart; assert total + tax
+    match the change.
+  - e.g. **UI view change** → open the view in the browser MCP; assert the changed element
+    renders and behaves.
+- **Retry cap:** <max gate attempts before handing back `needs-you`; default 3>
+- **Teardown:** `<command to stop the service/flow when done>`
 
 ## Phase compute policy (optional — effort-first)
 Per-phase compute tiers the workflows apply to their agents (CONTRACT §4.9). **Omit

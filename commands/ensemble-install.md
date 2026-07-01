@@ -32,9 +32,13 @@ human-edited files (never clobber a customized `repo-profile.md`).
      workflows (`Workflow({name: "ensemble-spec"|"ensemble-execute"|"ensemble-review"|"ensemble-debug"})`). Copy all four.
    These are identical across repos; copy verbatim.
 
-**3 — Gitignore the scratch space.** Ensure `.workflows/` is in the repo's
-`.gitignore` (append if missing). `.claude/` itself stays committed so the team
-shares the workflows.
+**3 — Gitignore scratch + personal config.** Ensure the repo's `.gitignore` contains
+(append any missing): `.workflows/` (scratch/handoff) and `.claude/ensemble/repo-profile.md`
+(your **personal** repo profile — which doubles as your personal gate library, CONTRACT
+§4.11). `.claude/` itself stays committed so the team shares the *kit* (commands + workflow
+scripts) — but the **config is personal**: the profile is yours, gitignored, never assumed
+shared (you *may* commit it to share). This is the "kit shared, config personal" split
+(CONTRACT §7).
 
 **4 — Deep recon.** Run CONTRACT §1 recon against this repo for real — detect
 languages, layout, subsystems, test framework, and the canonical
@@ -63,6 +67,13 @@ modules — don't just point at them. Then derive, with citations:
      orchestrated agents guess.
    - **Characteristic execution & verification mode** — how a change is actually
      proven done here (eval/grounding deltas? sim scenarios? browser flows? soak?).
+   - **Live real-run verification (CONTRACT §4.11 — the highest-value gate)** — the
+     *concrete, runnable* form of the above: can this repo prove a change **through the
+     real running service the way a user hits it**? Detect the boot command (dev/run
+     script, `docker compose`, devcontainer), its health signal, how to probe the real
+     flow (HTTP endpoint, browser MCP, CLI), and teardown. This is what makes the loop's
+     "done" trustworthy — great real-run testing is the whole thesis. If the repo has no
+     runnable service/flow, note that (the gate won't apply).
    A simulation-heavy k8s repo and a data-intensive UI repo must come out of this
    step with *different rosters and different acceptance models*. If they don't,
    you did this step wrong.
@@ -84,6 +95,13 @@ values as the default option:
      appliesWhen}]`. Distinct from invariants (properties that never regress) and from
      mandatory requirements (process/evidence gates): these are the positive
      "did it work?" signals. Surface your best guesses and let the user confirm/add.
+   - **Live real-run method** (CONTRACT §4.11 — the highest-value elicitation) —
+     detect → propose → ask: present your derived boot command / health signal / probe
+     patterns / teardown from 4b and ask the user to confirm or correct — *"here's how the
+     loop will prove a change works through the real service — right?"*. If you couldn't
+     detect a runnable flow, ask whether one exists and how to start it. Populate the
+     profile's **Live real-run verification** section; if there genuinely is no runnable
+     service, say so and omit the section (the gate won't apply).
    - **test/simulation/fixture harnesses** the agents should drive;
    - **MCP servers / local services** connected to this repo and when agents may
      use them (DB, browser, issue tracker, docs) — this is what makes the agents
@@ -112,10 +130,12 @@ values as the default option:
 **6 — Write the profile.** Populate `<repo>/.claude/ensemble/repo-profile.md`
 from `<KIT>/templates/repo-profile.template.md`, filling detected
 + confirmed values. The **Repo character**, **Invariants & gate tests**,
-**Essential success tests**, **Mandatory requirements**, **Specialist roster**, and
-**Execution mode** sections are mandatory — a profile without them is just a command
-list and defeats the purpose.
-Mark anything still unverified with `~`. This file is committed and human-maintained.
+**Essential success tests**, **Mandatory requirements**, **Specialist roster**,
+**Execution mode**, and **Live real-run verification** (unless the repo has no runnable
+flow) sections are mandatory — a profile without them is just a command list and defeats
+the purpose.
+Mark anything still unverified with `~`. This file is **personal and gitignored** (step 3),
+human-maintained — your config, not shared team infra.
 
 **7 — Report.** Emit a short CONTRACT §6-style summary: what was installed, the
 detected stack/commands (FACTs), what the interview resolved, and what remains an

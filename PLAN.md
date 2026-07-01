@@ -7,6 +7,16 @@ thin launchers that drive real, deterministic, schema-validated native workflows
 while a hard rule keeps the orchestrated subagents repo-aware and tool-aware so we
 don't pay the usual orchestration tax (lost repo context, unused repo tools).
 
+## The thesis (what Ensemble proves)
+
+Autonomous loops work really well **when the testing is great** — the bottleneck was
+never the loop, it's verification quality. Ensemble is the proof: it makes "done" mean
+**real-tool, user-shaped evidence** that the change works through the real running service
+(the **live real-run gate**, CONTRACT §4.11), locked with the human up front and proven
+independently. **Dynamic workflows are the means** — the gate flexes per `(workflow ×
+repo × task)` so the testing is always the *right* testing without hand-authoring it each
+run. Ensemble is a **personal tool**: the kit is shared, your config is personal.
+
 ## Why (the two downsides we're engineering against)
 
 Native workflows give us determinism, managed parallel fan-out, schema-validated
@@ -35,11 +45,12 @@ in `CONTRACT.md §4`.
 |---|---|---|---|
 | **Guideline** | `CONTRACT.md` | Orchestration contract: launch model, sandbox truths, the standard agent brief, tool-awareness rule, adaptive scale, adversarial-verify, the canonical output schemas | ✅ portable, identical everywhere |
 | **Workflows** | `workflows/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.js` | The actual native dynamic workflows. Generic scripts; take `args={profile,recon,target,...}`; orchestrate fan-out → pipeline → adversarial-verify → schema-validated result | ✅ portable |
-| **Adjustment** | `commands/ensemble-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** the scripts read | ✅ per-repo |
+| **Adjustment** | `commands/ensemble-install.md` → `repo-profile.md` | "Dynamically enable for this repo": recon + derive roster / invariants→gate-tests / **agent types** / **repo tools** / **live real-run gate** the scripts read | 🔒 per-repo, **personal/gitignored** |
 | **Entry points** | `commands/{ensemble-spec,ensemble-execute,ensemble-review,ensemble-debug}.md` | Thin launchers: read profile → ensure recon → resolve target → **call `Workflow({name,args})`** → render the report | ✅ portable |
 
-Ephemeral (gitignored): `.workflows/recon.md`, `.workflows/{spec,review}-<slug>.md`,
-workflow run journals.
+Personal (gitignored): `.claude/ensemble/repo-profile.md` — your config, which doubles as
+your gate library (CONTRACT §7). Ephemeral (gitignored): `.workflows/recon.md`,
+`.workflows/{spec,review}-<slug>.md`, workflow run journals.
 
 ## How a command runs (the loop, using `/ensemble-review`)
 
@@ -121,6 +132,10 @@ Enforcement is a **verification loop, not a one-shot block**:
 - [x] Live validation: ran `/ensemble-review` end-to-end on this repo's own scripts
       (run `wf_fd99a799-7e2`) — engine + schemas + pipeline confirmed working; it
       caught a real install-copy-list bug (now fixed) and two stale-doc nits (fixed)
+- [x] **Live real-run verification gate (§4.11) + personal-tool reframe** — the real-tool
+      "done" gate (feasibility pre-check at the lock + verification at the end) wired into
+      execute/review/debug; `repo-profile.md` is now personal/gitignored config that doubles
+      as the gate library (probe patterns keyed by `appliesWhen`, promotable from a run).
 
 ## Validation & hardening (live runs through the real engine)
 

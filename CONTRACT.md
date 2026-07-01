@@ -509,8 +509,8 @@ Scripts can't write files; the **command** writes them after the workflow return
 - Always **also print the report inline** in chat; the file is for handoff/re-use.
 - **Ensemble is a personal tool — the *kit* is shared, the *config* is personal.** The
   shared, committed files are this `CONTRACT.md`, the command prompts, and the
-  `workflows/*.js` scripts; keep that set small. **`repo-profile.md` and the personal gate
-  library are per-developer config, gitignored** (the installer adds them) — never assumed
-  shared; you *may* commit the profile to share it, but nothing relies on it. The profile
-  holds your durable gates (invariants + the primary real-run method); per-task gates
-  promoted from a run (§4.11) live alongside it, recalled by `appliesWhen`.
+  `workflows/*.js` scripts; keep that set small. **`repo-profile.md` is per-developer config, gitignored**
+  (the installer adds it) — never assumed shared; you *may* commit it to share, but nothing
+  relies on it. The profile *is* your personal gate library: your durable gates (invariants
+  + the primary real-run method) plus the per-task real-run gates you **promote** from a run
+  — probe patterns keyed by `appliesWhen`, recalled when a later change matches (§4.11).
