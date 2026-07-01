@@ -66,10 +66,11 @@ validator).
 # clone anywhere — the installer finds itself relative to this checkout
 git clone https://github.com/lukebrevoort-mytra/Ensemble ~/.claude/ensemble
 
-# make /ensemble-install and /ensemble-update available in every repo
+# make /ensemble-install, /ensemble-update, /ensemble-uninstall available in every repo
 mkdir -p ~/.claude/commands   # ln won't create this dir; fresh machines may not have it
-ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
-ln -sf ~/.claude/ensemble/commands/ensemble-update.md  ~/.claude/commands/ensemble-update.md
+ln -sf ~/.claude/ensemble/commands/ensemble-install.md   ~/.claude/commands/ensemble-install.md
+ln -sf ~/.claude/ensemble/commands/ensemble-update.md    ~/.claude/commands/ensemble-update.md
+ln -sf ~/.claude/ensemble/commands/ensemble-uninstall.md ~/.claude/commands/ensemble-uninstall.md
 
 # expose `wfwatch` — the live workflow-observability CLI (needs ~/.claude/bin on PATH)
 mkdir -p ~/.claude/bin
@@ -160,6 +161,21 @@ It copies only the portable layer (contract + commands + scripts), **never touch
 your `repo-profile.md`, diffs before writing, and validates the synced scripts. It's
 the light counterpart to `/ensemble-install` — no recon, no interview. (Re-running
 `/ensemble-install` also updates the portable layer, but re-runs the full retrofit.)
+
+### Remove it cleanly
+
+```
+/ensemble-uninstall                 # remove from the current repo
+/ensemble-uninstall --check         # dry-run: show what would be removed, change nothing
+/ensemble-uninstall --all [<root>]  # remove from every install under a root
+/ensemble-uninstall --purge         # also delete your personal repo-profile.md
+```
+
+Deletes only the portable layer (contract + commands + scripts) and the `.workflows/`
+scratch, and undoes the `.gitignore` lines install added. **Keeps your personal
+`repo-profile.md`** unless `--purge`, leaves your own commands/scripts under `.claude/`
+untouched, and never commits or discards uncommitted work. Re-add anytime with
+`/ensemble-install`.
 
 ---
 
