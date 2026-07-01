@@ -97,10 +97,22 @@ Separate facts from judgment:
   close them (re-run focused / `thorough`, or run the named lens) or accept the gap
   knowingly. List med/low gaps without prompting.
 
+## 7.5 — Live real-run verification gate (required — CONTRACT §4.11)
+Before finalizing the verdict, when `repo-profile.md` defines a
+**`## Live real-run verification`** section: apply its skip check (change outside the runtime-reachable surface
+→ note the skip **with reason**, gate not-applicable), else run the four moves (CONTRACT
+§4.11) — derive 1–3 directed probes from the diff + intent, boot the service per the profile
+with the branch's *current* config, poll its health signal, probe the real endpoint, judge
+each answer PASS/FAIL/BLOCKED, then tear it down. This is the proof the change works through
+the *real* service, not just the checks. A live **FAIL is a hard gate** (§8); **BLOCKED**
+leaves the real-flow invariant unverified and can't be upgraded to a clean APPROVE on its
+absence. Carry the probes, answers, and per-probe verdicts into §8 and §9. No such section
+in the profile → skip this step.
+
 ## 8 — The user owns the verdict
 Treat `verdictSuggested` as a *starting point only*. The final verdict reflects the
-user's adjudication (plus the hard gates: a failed invariant gate or unmet mandatory
-requirement still can't be APPROVE — CONTRACT §4.8). A **high coverage gap** also keeps
+user's adjudication (plus the hard gates: a failed invariant gate, an unmet mandatory
+requirement, or a live real-run FAIL/BLOCKED still can't be APPROVE — CONTRACT §4.8). A **high coverage gap** also keeps
 it off a clean APPROVE until the user either closes the gap or accepts it knowingly —
 "we never looked" is not "we looked and it's fine". State it as **their** decision,
 not the bot's.
@@ -108,9 +120,9 @@ not the bot's.
 ## 9 — Output & (reviewer) post-back
 Write the CONTRACT §6 report to `.workflows/review-<slug>.md` and print it inline:
 the Change Map, the verdict (the user's), adjudicated findings with their dispositions
-and reasons, the *Evidence / checks run* table, residual risks from `coverage` (include
+and reasons, the **Live real-run verification** block (§4.11: probes, real answers, PASS/FAIL/BLOCKED + boot evidence, or the skip reason), the *Evidence / checks run* table, residual risks from `coverage` (include
 the **coverage gaps** + their disposition — closed / accepted — under Open questions or
-Risks), and a link to the visual artifact.
+Risks), and a link to the visual artifact (extend it with a **live real-run panel** — probe → trimmed answer → PASS/FAIL/BLOCKED — when the gate ran).
 - **Reviewer mode:** offer to post the findings the user kept as **inline PR review
   comments** (`gh pr review` / `gh api`). **Never post without explicit confirmation**;
   show exactly what will be posted first, and post only what they approve.

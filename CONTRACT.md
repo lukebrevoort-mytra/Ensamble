@@ -269,8 +269,11 @@ candidates from the spec's acceptance criteria + the applicable **mandatory
 requirements** + **invariant gate tests** in blast radius + the repo's **essential
 success tests**, confirms them with the human (adaptively — light when `/ensemble-spec` already
 vetted them, fuller for a raw request; §4.10), and passes the locked set as
-`args.criteria` (`[{id, criterion, verifyBy, source}]`). The script **decomposes
-against these criteria; it never re-authors them.** If reality diverges (a criterion is
+`args.criteria` (`[{id, criterion, verifyBy, source}]`). The lock also confirms the
+**live real-run method** and pre-checks that it can run here (§4.11), so "done" includes
+proving the change through the real service — and an unrunnable gate is caught up front,
+not after a full loop. The script **decomposes against these criteria; it never re-authors
+them.** If reality diverges (a criterion is
 wrong or impossible), the loop does **not** silently redefine "done" — it returns to the
 human (the `needs-you` exit), per §5.
 
@@ -354,7 +357,8 @@ down — the fix for "I didn't feel involved":
 - **Intake (before the workflow):** confirm who the user is and capture what only they
   know — for `/ensemble-review`, author-vs-reviewer, plus focus / intent / out-of-scope; for
   `/ensemble-execute`, **lock the passing criteria** (§4.8) so the loop runs to a human-confirmed
-  definition of "done" — and pass it in `args` so every agent's brief honors it. A sweep
+  definition of "done" — including the **live real-run method** and a feasibility pre-check
+  of it (§4.11) — and pass it in `args` so every agent's brief honors it. A sweep
   the user never shaped — or a loop whose "done" the user never set — is exactly what
   makes them feel uninvolved.
 - **Comprehension before issues:** lead the output with the **shape** of the work — a
@@ -367,6 +371,61 @@ down — the fix for "I didn't feel involved":
   (question, options, recommendation); the **user makes it** and owns the final
   verdict. `verdictSuggested` is a starting point, never the last word. Scale how much
   you interrupt to the work — adjudicate what matters, list nits.
+
+### 4.11 Live real-run verification gate — prove it through the real service
+
+Tests and evals prove a change **in the harness**; they do not prove it **through the
+running service the way a user hits it**. When `repo-profile.md` defines a
+**`## Live real-run verification`** section, the launcher MUST verify the change through
+that real flow. (No such profile section → this gate does not apply; skip it silently.)
+Scripts can't boot services (§4.2), so this gate is **launcher-orchestrated** at **two
+touchpoints**: a *feasibility pre-check* when the criteria are locked (front), and the
+*real-run verification* after the workflow returns (end). Everything about *how* — boot command,
+health signal, probe endpoint, retry cap — comes from the profile's section; the contract
+below is the repo-agnostic shape.
+
+**Feasibility pre-check (at the lock — §4.8, §4.10).** Before the loop runs, the launcher
+confirms the gate is *runnable here* and **confirms the method with the human**: it
+proposes the real-run method from the profile + the change, the human accepts or edits it
+(the "here's how I'd prove this once done" they own), then stands the flow up (boot the
+service / open the browser MCP / locate the harness) to prove it *can* run. Fail fast — if
+the real flow **cannot** run in this environment, offer the strongest **labeled fallback**:
+the human accepts it (the run proceeds, "done" carries the caveat, recorded ASSUMPTION ~
+per §3) or clears the environment. Never a silent downgrade, and never a full loop burned
+only to find at the end that nothing could be verified. A per-task method the human gives
+here can be **promoted** into the personal profile (§7) for reuse, recalled by `appliesWhen`.
+
+Four moves (the end verification):
+1. **Skip check.** Run only when the change touches the profile's declared
+   runtime-reachable surface. Out of scope (test-only / docs / infra-only) → **skip and say
+   so** in the report. Never a silent skip — absence is a signal.
+2. **Derive probes.** Spawn a subagent that reads the change (diff+spec for execute/review;
+   the root cause for debug) + the profile's **probe-pattern table**, returning **1–3
+   directed questions**, each `{question, expectedSignal, why}` — `expectedSignal` states
+   what a correct answer must / must not contain, tied to what actually changed.
+3. **Run through the real flow.** Boot the service per the profile (its boot command +
+   the repo's *current* config, so a config change under test is exercised for real), wait
+   for its health signal, send each probe to the real endpoint, capture the real response.
+   Tear the service down per the profile when done.
+4. **Judge + fold.** A judge subagent scores each answer against its `expectedSignal`:
+   - **PASS** — service answered and the answer matches intent.
+   - **FAIL** — answered but the answer contradicts intent. A real defect.
+   - **BLOCKED** — couldn't boot / env missing / health never green / empty answer where
+     one was required. An environment gap, **not** a pass.
+   Fold a **Live real-run verification** block into the §6 report and the HTML artifact:
+   boot evidence, per-probe `question · trimmed answer · PASS/FAIL/BLOCKED + rationale`,
+   and the overall gate result.
+
+The gate is required, so its result is load-bearing:
+- **`/ensemble-execute` & `/ensemble-review`** verify the change. **FAIL** blocks — execute cannot claim
+  `complete`, review cannot APPROVE (REQUEST CHANGES with the failing probe). **BLOCKED**
+  likewise cannot be reported as done / APPROVE; surface it as an unverified invariant. On
+  an execute FAIL, append the failing probe as loop feedback and re-run the loop, up to the
+  profile's **retry cap** (default 3 attempts total); still failing → hand back `needs-you`
+  with the live evidence.
+- **`/ensemble-debug`** uses it to **reproduce** the bug through the real flow: a live reproduction
+  is corroborating evidence for the diagnosis; failure to reproduce live is stated and lowers
+  confidence. It reproduces; it never edits.
 
 ---
 
@@ -448,5 +507,10 @@ Scripts can't write files; the **command** writes them after the workflow return
   - `.workflows/spec-<slug>.md` — specs (handoff from `/ensemble-spec` to `/ensemble-execute`).
   - `.workflows/review-<slug>.md` — review reports.
 - Always **also print the report inline** in chat; the file is for handoff/re-use.
-- The only committed, human-maintained files are this `CONTRACT.md`, the command
-  prompts, the `workflows/*.js` scripts, and `repo-profile.md`. Keep that set small.
+- **Ensemble is a personal tool — the *kit* is shared, the *config* is personal.** The
+  shared, committed files are this `CONTRACT.md`, the command prompts, and the
+  `workflows/*.js` scripts; keep that set small. **`repo-profile.md` and the personal gate
+  library are per-developer config, gitignored** (the installer adds them) — never assumed
+  shared; you *may* commit the profile to share it, but nothing relies on it. The profile
+  holds your durable gates (invariants + the primary real-run method); per-task gates
+  promoted from a run (§4.11) live alongside it, recalled by `appliesWhen`.

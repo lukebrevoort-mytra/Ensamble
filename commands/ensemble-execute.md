@@ -96,6 +96,25 @@ re-authors it. Let the script own decomposition and the implement→verify→loo
 cycle: it loops while it keeps making **progress**, stopping the moment it converges,
 stalls, or hits something only you can resolve (it does not grind to a fixed round count).
 
+## 6.5 — Live real-run verification gate (required — CONTRACT §4.11)
+Before the final render, if `repo-profile.md` defines a **`## Live real-run verification`**
+section, run the gate — the required proof that the change works through the *real* running
+service, not just the tests/evals the loop already ran. (No such section → skip this step.)
+1. Apply the profile's **skip check**. If the change is outside its runtime-reachable surface
+   (test-only / docs / infra-only), note the skip **with its reason** and keep the workflow's
+   `exitState` — the gate is not-applicable, not passed.
+2. Otherwise run the four moves (CONTRACT §4.11): derive 1–3 directed probes from the spec +
+   diff, boot the service per the profile with the branch's *current* config, poll its health
+   signal, probe the real endpoint, judge each answer PASS/FAIL/BLOCKED, then tear it down.
+3. Set the **effective exit** the render uses:
+   - **PASS / skipped** → `exitState` unchanged (a `complete` loop stays `complete`).
+   - **FAIL** → append the failing probe(s) as a new criterion/feedback and **re-run
+     `/ensemble-execute`** so the loop fixes the real defect; cap at **3 gate attempts total**, then set
+     the effective exit to `needs-you` and hand back with the live evidence.
+   - **BLOCKED** → do not report `complete`; carry the blocker into the render (`needs-you` /
+     `blocked` per cause) — never a silent pass.
+Carry the probes, answers, and per-probe verdicts into the §7 report + artifact.
+
 ## 7 — Render by exit state & hand off
 The workflow returns `{ exitState, converged, stopReason, rounds, criteriaWereConfirmed,
 criteria[], tasks[], decisions[], checks, mandatoryRequirements, blockers, coverage }`.
@@ -110,7 +129,10 @@ different handoff. Render two things:
    which are not. If `criteriaWereConfirmed` is false, say the criteria were derived, not
    human-locked. Note any **simplicity-gate** activity: tasks the verifier sent back to trim
    (`coverage.bloatPruned`) and any accepted with residual bloat (`coverage.bloatResidual`) —
-   surface the latter as an advisory the user can act on.
+   surface the latter as an advisory the user can act on. Add a **Live real-run
+   verification** block (§4.11): the probes asked, the real answers (trimmed), and
+   PASS/FAIL/BLOCKED per probe with the boot evidence — the proof the change works through
+   the real service (or the stated skip reason).
 2. **A visual artifact** — render the return object into a self-contained HTML page via the
    **Artifact tool** (load the `artifact-design` skill / house style: Fraunces + Spline
    Sans, warm neutrals, one terracotta accent, render-on-first-paint, no external assets).
@@ -118,10 +140,12 @@ different handoff. Render two things:
    **criteria scorecard** (each locked criterion → met/unmet, colored), the **task ledger
    as a table** (one row per task, colored by status, with its criterion id, rounds, and
    evidence), the *Evidence / checks run* table (pass/fail/blocked badges + key line), the
-   mandatory requirements with their status, and the recommended next action. Give its URL.
+   mandatory requirements with their status, the **live real-run panel** (each probe →
+   trimmed answer → PASS/FAIL/BLOCKED badge + boot evidence), and the recommended next
+   action. Give its URL.
 
 Then branch on `exitState`:
-- **`complete`** → all criteria proven; recommend `/ensemble-review` of the branch.
+- **`complete`** → all criteria proven **and the §6.5 live real-run gate passed (or was not applicable)**; recommend `/ensemble-review` of the branch.
 - **`needs-you`** → lead with `stopReason`. If `decisions[]` is non-empty, present each as
   a real choice to the user (the loop stopped because the criterion is ambiguous or needs a
   call only they can make) — answer it, then re-run `/ensemble-execute` so the loop continues with
@@ -132,7 +156,7 @@ Then branch on `exitState`:
   a re-run can finish.
 
 **Do not declare done unless `exitState` is `complete`.** A missing mandatory requirement,
-a failing check, a pending decision, or an unmet criterion means it is not done — say so.
+a failing check, a pending decision, or an unmet criterion, or a live real-run FAIL/BLOCKED, means it is not done — say so.
 Save nothing unless asked; the branch + the printed ledger are the handoff.
 
 Spec or request (path, pasted spec, or raw text; optional `quick`/`thorough` and/or `eco`/`max`): $ARGUMENTS
