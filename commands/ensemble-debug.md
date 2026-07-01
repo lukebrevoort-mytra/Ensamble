@@ -63,6 +63,18 @@ Let the script own it: locate + hypothesize, **always attempt reproduction**, fa
 investigator per hypothesis grounded in the reproduction evidence, and adversarially
 verify the leading diagnosis.
 
+## 4.5 — Live real-run reproduction (CONTRACT §4.11, when the profile defines it)
+If `repo-profile.md` defines a **`## Live real-run verification`** section and the bug is
+reachable through the real service flow, corroborate the workflow's test-based
+`reproduction` with a **live** one: boot the service per the profile with the current
+config, drive the input that should trigger the symptom — reusing a recorded real-run check
+whose `appliesWhen` matches, or constructing the repro from the bug report — against the real
+endpoint, and capture the real response as evidence — then tear it down (CONTRACT
+§4.11). A successful **live reproduction** is FACT-grade evidence for the diagnosis; if the
+symptom **can't** be reproduced live, say so plainly — it lowers confidence, it does not fix
+anything. Fold the result into the Reproduction panel in §5. Debug diagnoses: this gate
+reproduces, it never edits. No such section in the profile → skip this step.
+
 ## 5 — Render the diagnosis & hand off
 The workflow returns `{ reproduction, diagnosis, fixRoute, hypothesesConsidered, ruledOut,
 affectedAreas, confidence, coverage }`. If it returns `{error}`, surface it and recommend
@@ -74,7 +86,8 @@ the fix (skip the artifact). Otherwise render two things:
      `observedBehavior` vs `expectedBehavior`, and the `failureEvidence` (the real
      stack/assertion/output). If `reproduced` is false, state it plainly and surface
      `notesIfUnreproduced` (what was tried, what reproduction needs) — and mark the whole
-     diagnosis an ASSUMPTION ~, not a FACT.
+     diagnosis an ASSUMPTION ~, not a FACT. Also report the **live real-run reproduction**
+     from §4.5 (the real-service response + reproduced ✓/✗) as corroborating evidence, when it ran.
    - **Root cause** — `diagnosis.rootCause` at `location`, the `mechanism` tying it to the
      reproduced failure, tagged FACT ✓ only if reproduced **and** `verified`; otherwise
      ASSUMPTION ~. List `diagnosis.refutations` if the leading lead survived contested verify.
@@ -89,7 +102,7 @@ the fix (skip the artifact). Otherwise render two things:
    **Artifact tool** (load the `artifact-design` skill / house style: Fraunces + Spline
    Sans, warm neutrals, one terracotta accent, render-on-first-paint, no external assets).
    Lay it out as a **diagnosis card**, top to bottom: the **symptom** → a **reproduction
-   panel** (the command + the verbatim failure evidence, with a clear reproduced ✓/✗
+   panel** (the command + the verbatim failure evidence and the live real-run attempt (when it ran), with a clear reproduced ✓/✗
    badge) → the **root cause** at its file:line with the mechanism → the **ruled-out
    hypotheses** (struck through) → the **route to a fix**, with a confidence chip. Give
    its URL to the user.

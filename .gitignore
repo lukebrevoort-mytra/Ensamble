@@ -1,2 +1,6 @@
 # Workflow Kit scratch/handoff produced inside *target* repos
 .workflows/
+
+# Local editor/agent state + Python bytecode — not part of the kit
+.claude/
+__pycache__/

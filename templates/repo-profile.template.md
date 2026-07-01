@@ -6,6 +6,9 @@
 > treat confirmed entries as FACTs. This is the layer that makes the generic
 > workflows *specific* to this repo. Keep it current; it's the highest-value file.
 >
+> **Personal & gitignored** — your per-developer config, not shared team infra (the
+> installer gitignores it). You *may* commit it to share, but nothing relies on that.
+>
 > Convention: prefix unverified guesses with `~` (assumption) so workflows know
 > to confirm them. Confirmed entries need no prefix.
 
@@ -113,6 +116,33 @@ the loop and the acceptance signal so `/ensemble-execute` adopts it.
 - **Acceptance signal:** <what actually proves correctness beyond "tests pass">
 - **Inner loop:** <the per-change verify cycle for this repo>
 - **Tooling/harness to drive it:** <sim runner, eval harness, browser, fixtures>
+
+## Live real-run verification (CONTRACT §4.11 — the real-tool "done" gate)
+The concrete, executable form of the acceptance mode above: how the workflows prove a
+change **through the real running service the way a user hits it**, not just in the test
+harness. This is the highest-value gate — great real-run testing is what makes the
+autonomous loop trustworthy. Present → the launcher runs it at **two touchpoints**: a
+*feasibility pre-check* when criteria are locked, and *verification* after the run
+(CONTRACT §4.11). **Omit this whole section** if the repo has no runnable service/flow —
+the gate then does not apply. **Machine-read — keep the field labels exact.**
+- **Skip when:** <changes the gate does NOT apply to — test-only, docs, infra-only, or
+  paths outside the runtime-reachable surface. The launcher skips *and says so*.>
+- **Boot:** `<command to start the service/flow with the branch's CURRENT config>` — so a
+  config change under test is exercised for real.
+- **Health signal:** <how to know it's up before probing — e.g. `GET /health` → 200, a log
+  line, a port open. The launcher polls this.>
+- **Real-run checks** (runnable, keyed by `appliesWhen` — the launcher **runs** the matching
+  check against the real service; it does *not* invent probes per run. **This list is your
+  personal gate library** — a per-task check you promote from a run lands here, keyed by
+  `appliesWhen`):
+  - e.g. **pricing/checkout change** (`appliesWhen: api/quote/**`) → `curl -fsS
+    :PORT/quote -d @fixtures/sample-cart.json | jq -e '.total==… and .tax==…'`.
+  - e.g. **has an e2e/scenario harness** (`appliesWhen: …`) → the exact invocation, e.g.
+    `npx playwright test orders.spec.ts`.
+  - e.g. **UI view change, no assertable check** (`appliesWhen: web/**`) → browser-MCP
+    recipe: open the view, assert the changed element renders; screenshot as proof.
+- **Retry cap:** <max gate attempts before handing back `needs-you`; default 3>
+- **Teardown:** `<command to stop the service/flow when done>`
 
 ## Phase compute policy (optional — effort-first)
 Per-phase compute tiers the workflows apply to their agents (CONTRACT §4.9). **Omit

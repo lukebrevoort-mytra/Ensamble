@@ -20,8 +20,13 @@ decisions. Orchestrated agents; human-owned calls.
 ## Why it's different
 
 Most "AI review/build" tools sweep your code and hand down a verdict. Ensemble is
-built on three principles that keep it grounded and keep you involved:
+built on four principles that keep it grounded and keep you involved:
 
+- **🔬 Great testing is the point.** Loops work when the verification is great — so `done`
+  means the change is **proven through the real running service the way a user hits it**
+  (the *live real-run gate*), not just green tests. That real-tool proof, locked with you
+  up front and pre-checked so it can actually run, is what makes the autonomous loop
+  trustworthy. Dynamic workflows are the *means*: the gate flexes per repo and per task.
 - **🎻 Native orchestration.** Each command is a thin launcher that calls Claude's
   Workflow engine — deterministic fan-out, schema-validated output, adversarial
   verification, budget-scaled depth. Not a prompt pretending to be a pipeline.
@@ -40,7 +45,7 @@ built on three principles that keep it grounded and keep you involved:
 | Command | Phases | You get |
 |---|---|---|
 | **`/ensemble-spec`** | Scope → Gather (parallel explorers) → Draft → adversarial Critique | An implementation-ready spec with testable criteria, anchored to real code |
-| **`/ensemble-execute`** | Lock criteria with you → Plan → **Implement ⇄ independent Verify loop** → Checks | Working code. You confirm the passing criteria once up front; the loop runs autonomously to them (looping while it makes progress, not for a fixed count) and exits **complete / needs-you / blocked** — it won't report done until every criterion **and** your repo's mandatory evidence (a passing test, a UI screenshot) are proven |
+| **`/ensemble-execute`** | Lock criteria with you → Plan → **Implement ⇄ independent Verify loop** → Checks | Working code. You confirm the passing criteria once up front; the loop runs autonomously to them (looping while it makes progress, not for a fixed count) and exits **complete / needs-you / blocked** — it won't report done until every criterion **and** your repo's mandatory evidence (a passing test, a UI screenshot) **and the live real-run gate** (the change proven through the real running service) are proven |
 | **`/ensemble-review`** | Shape → Review → Verify → Checks | A Change Map (chat + visual artifact), findings tagged bug / judgment / intent-question, and a verdict **you** set |
 | **`/ensemble-debug`** | Locate → **Reproduce (always)** → Investigate (one per hypothesis) → adversarial Verify | A documented root cause backed by a real reproduction (the failing test/output), the alternatives it ruled out, and an evidence-backed **route to a fix** — which you hand to `/ensemble-execute` or `/ensemble-spec`. It diagnoses; it doesn't fix |
 
@@ -59,12 +64,13 @@ validator).
 
 ```sh
 # clone anywhere — the installer finds itself relative to this checkout
-git clone https://github.com/lukebrevoort-mytra/Ensamble ~/.claude/ensemble
+git clone https://github.com/lukebrevoort-mytra/Ensemble ~/.claude/ensemble
 
-# make /ensemble-install and /ensemble-update available in every repo
+# make /ensemble-install, /ensemble-update, /ensemble-uninstall available in every repo
 mkdir -p ~/.claude/commands   # ln won't create this dir; fresh machines may not have it
-ln -sf ~/.claude/ensemble/commands/ensemble-install.md ~/.claude/commands/ensemble-install.md
-ln -sf ~/.claude/ensemble/commands/ensemble-update.md  ~/.claude/commands/ensemble-update.md
+ln -sf ~/.claude/ensemble/commands/ensemble-install.md   ~/.claude/commands/ensemble-install.md
+ln -sf ~/.claude/ensemble/commands/ensemble-update.md    ~/.claude/commands/ensemble-update.md
+ln -sf ~/.claude/ensemble/commands/ensemble-uninstall.md ~/.claude/commands/ensemble-uninstall.md
 
 # expose `wfwatch` — the live workflow-observability CLI (needs ~/.claude/bin on PATH)
 mkdir -p ~/.claude/bin
@@ -93,8 +99,10 @@ your design docs**, **interviews you** (canonical commands, test/sim harnesses, 
 services, the specialist roster, what's off-limits, and your **mandatory
 requirements**), and writes `.claude/ensemble/repo-profile.md`.
 
-> Commit `.claude/` — the workflows and profile are shared with your team. The
-> gitignored `.workflows/` holds scratch and handoff artifacts.
+> Commit `.claude/` — the **kit** (commands + workflow scripts) is shared with your team.
+> But your `repo-profile.md` and the `.workflows/` scratch are **gitignored and personal**:
+> Ensemble is a personal tool — the kit is shared, your config (and how you verify) is
+> yours. You *may* commit the profile to share it, but nothing relies on that.
 
 ### 3. Use it
 
@@ -154,6 +162,21 @@ your `repo-profile.md`, diffs before writing, and validates the synced scripts. 
 the light counterpart to `/ensemble-install` — no recon, no interview. (Re-running
 `/ensemble-install` also updates the portable layer, but re-runs the full retrofit.)
 
+### Remove it cleanly
+
+```
+/ensemble-uninstall                 # remove from the current repo
+/ensemble-uninstall --check         # dry-run: show what would be removed, change nothing
+/ensemble-uninstall --all [<root>]  # remove from every install under a root
+/ensemble-uninstall --purge         # also delete your personal repo-profile.md
+```
+
+Deletes only the portable layer (contract + commands + scripts) and the `.workflows/`
+scratch, and undoes the `.gitignore` lines install added. **Keeps your personal
+`repo-profile.md`** unless `--purge`, leaves your own commands/scripts under `.claude/`
+untouched, and never commits or discards uncommitted work. Re-add anytime with
+`/ensemble-install`.
+
 ---
 
 ## What a `/ensemble-review` feels like
@@ -177,10 +200,10 @@ This is the human-in-the-loop model in action:
 ## What gets installed
 
 ```
-<repo>/.claude/                ← committed; shared with the team
+<repo>/.claude/                ← the KIT — committed, shared with the team
   ensemble/
     CONTRACT.md                portable operating contract (identical everywhere)
-    repo-profile.md            this repo's profile — the only per-repo file
+    repo-profile.md            ← your PERSONAL config (gitignored): profile + gate library
   commands/
     ensemble-spec.md  ensemble-execute.md  ensemble-review.md  ensemble-debug.md
   workflows/
