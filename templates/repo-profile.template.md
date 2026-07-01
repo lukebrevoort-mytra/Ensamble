@@ -134,13 +134,18 @@ the gate then does not apply. **Machine-read — keep the field labels exact.**
 - **Real-run checks** (runnable, keyed by `appliesWhen` — the launcher **runs** the matching
   check against the real service; it does *not* invent probes per run. **This list is your
   personal gate library** — a per-task check you promote from a run lands here, keyed by
-  `appliesWhen`):
-  - e.g. **pricing/checkout change** (`appliesWhen: api/quote/**`) → `curl -fsS
-    :PORT/quote -d @fixtures/sample-cart.json | jq -e '.total==… and .tax==…'`.
-  - e.g. **has an e2e/scenario harness** (`appliesWhen: …`) → the exact invocation, e.g.
-    `npx playwright test orders.spec.ts`.
-  - e.g. **UI view change, no assertable check** (`appliesWhen: web/**`) → browser-MCP
-    recipe: open the view, assert the changed element renders; screenshot as proof.
+  `appliesWhen`). Each check may carry provenance from install's **Probe & Prove** (the
+  highest ladder rung it actually ran green — `boot`/`smoke`/`behavioral` — and `provenAt`);
+  a flow that couldn't be exercised at install is recorded `BLOCKED` honestly, never a
+  fabricated green:
+  - e.g. **pricing/checkout change** (`appliesWhen: api/quote/**`) — rung: smoke — provenAt:
+    2026-07-01 → `curl -fsS :PORT/quote -d @fixtures/sample-cart.json | jq -e '.total==… and .tax==…'`.
+  - e.g. **has an e2e/scenario harness** (`appliesWhen: …`) — rung: behavioral → the exact
+    invocation, e.g. `npx playwright test orders.spec.ts`.
+  - e.g. **UI view change, no assertable check** (`appliesWhen: web/**`) — rung: behavioral →
+    browser-MCP recipe: open the view, assert the changed element renders; screenshot as proof.
+  - e.g. **planner flow** (`appliesWhen: planner/**`) — BLOCKED: needs GPU sim host
+    unavailable at install; reached rung 1 (boots, health 200).
 - **Retry cap:** <max gate attempts before handing back `needs-you`; default 3>
 - **Teardown:** `<command to stop the service/flow when done>`
 
